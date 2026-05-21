@@ -1,0 +1,52 @@
+# Atlas API — base configuration.
+#
+# Policy (per CONTRIBUTING.md):
+#   * No application-{env}.yml profile files are committed to the repo.
+#   * All secrets are supplied via environment variables; this file
+#     only declares safe defaults and env-var mappings.
+#   * DATABASE_URL must be a plain JDBC URL — pgBouncer-compatibility
+#     parameters (prepareThreshold=0, preparedStatementCacheQueries=0,
+#     tcpKeepAlive=true, socketTimeout=10) are appended programmatically
+#     by DataSourceConfig. Do not pre-append them here.
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: atlas-api
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        query:
+          plan_cache_max_size: 512
+        boot:
+          allow_jdbc_metadata_access: false
+  datasource:
+    hikari:
+      # DatabaseStartupValidator (SmartLifecycle) owns the fail-fast contract
+      # end-to-end. -1 disables Hikari's eager pool initialization check so the
+      # validator can produce a single, sanitized error message on failure.
+      initialization-fail-timeout: -1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  database:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/atlas}
+    username: ${DATABASE_USERNAME:atlas}
+    password: ${DATABASE_PASSWORD:}
