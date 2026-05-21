@@ -1,0 +1,33 @@
+# ----------------------------------------------------------------------------
+# Root .gitignore — Sprint 0 skeleton
+# Sections: Maven/Java, Node, Environment/secrets, OS, IDE
+# ----------------------------------------------------------------------------
+
+# Maven / Java
+target/
+*.jsa
+*.class
+
+# Node
+node_modules/
+dist/
+
+# Environment / secrets
+# Do NOT commit .env.example with real credentials — placeholders/comments only.
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# IDE / tooling
+.idea/
+.vscode/
+.claude/
+*.iml
+.project
+.classpath
+.settings/

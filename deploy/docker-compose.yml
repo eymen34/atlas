@@ -1,0 +1,8 @@
+# Sprint 0 skeleton — intentionally empty.
+#
+# Full service definitions (app, postgres, minio) arrive in the
+# infrastructure ticket. This stub exists so that `docker compose
+# -f deploy/docker-compose.yml config --quiet` exits 0 from day one
+# and so the file path is reserved in the repository skeleton.
+
+services: {}

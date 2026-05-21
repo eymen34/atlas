@@ -1,0 +1,9 @@
+# CODEOWNERS — Sprint 0 placeholder
+#
+# Replace @org/maintainers with the real GitHub team handle once the
+# organization and team are provisioned. GitHub will display a yellow
+# warning on this file until that team exists; that warning is expected
+# for Sprint 0.
+
+# Default owners for everything in the repo.
+* @org/maintainers
