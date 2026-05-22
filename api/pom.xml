@@ -27,6 +27,9 @@
     <!-- Override Spring Boot 4 parent BOM Flyway version. Locked to 10.20.x
          per architecture_decisions:migration_tool. -->
     <flyway.version>10.20.1</flyway.version>
+    <!-- logstash-logback-encoder 8.x supports SLF4J 2.x + Logback 1.5.x
+         (the versions Spring Boot 4.0.6 manages). -->
+    <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
   </properties>
 
   <dependencies>
@@ -66,6 +69,13 @@
     <dependency>
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-registry-prometheus</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>${logstash-logback-encoder.version}</version>
     </dependency>
 
     <dependency>

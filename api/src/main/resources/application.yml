@@ -48,11 +48,23 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,prometheus
+        # Only health, info, and prometheus are exposed. /actuator/env,
+        # /actuator/beans, /actuator/heapdump, etc. stay 404. The custom
+        # /health and /ready endpoints (HealthController/ReadyController)
+        # are the load-balancer-facing probes; /actuator/health is the
+        # operator-facing aggregate that includes the DB indicator.
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  health:
+    db:
+      # Explicit so the contract is visible: /actuator/health does perform
+      # a DB ping. ObservabilityIntegrationTest does NOT assert on body
+      # content because the included indicators can shift across Boot minor
+      # versions.
+      enabled: true
 
 app:
   database:

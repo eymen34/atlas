@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Atlas logging configuration. One ConsoleAppender writing single-line JSON
+  to stdout via LogstashEncoder. No file appenders, no rolling, no pretty
+  print. The deployment captures stdout (docker logs / k8s log driver /
+  Cloud Run) so the application MUST NOT write to disk.
+
+  Field-name contract is pinned via <fieldNames>: a downstream change to
+  the encoder defaults would otherwise silently rename "logger_name" or
+  "thread_name". LoggingJsonFormatTest asserts these names.
+-->
+<configuration>
+
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdc>true</includeMdc>
+      <includeContext>false</includeContext>
+      <fieldNames>
+        <timestamp>@timestamp</timestamp>
+        <level>level</level>
+        <logger>logger_name</logger>
+        <thread>thread_name</thread>
+        <message>message</message>
+        <stackTrace>stack_trace</stackTrace>
+      </fieldNames>
+    </encoder>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+
+  <logger name="org.springframework" level="INFO"/>
+  <logger name="org.hibernate" level="WARN"/>
+  <logger name="com.zaxxer.hikari" level="INFO"/>
+  <logger name="io.ngss.atlas" level="INFO"/>
+</configuration>
