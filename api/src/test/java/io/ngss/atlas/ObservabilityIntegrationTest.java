@@ -4,12 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.startsWith;
 
+import static io.restassured.RestAssured.given;
+
 import io.restassured.RestAssured;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -62,11 +66,21 @@ class ObservabilityIntegrationTest {
 
   @Autowired JsonMapper mapper;
 
+  @BeforeEach
+  void configureRestAssured() {
+    RestAssured.baseURI = "http://localhost";
+    RestAssured.port = port;
+  }
+
+  @AfterEach
+  void resetRestAssured() {
+    RestAssured.reset();
+  }
+
   @Test
   @Order(1)
   void healthReturnsUp() {
-    RestAssured.given()
-        .port(port)
+    given()
         .when()
         .get("/health")
         .then()
@@ -79,8 +93,7 @@ class ObservabilityIntegrationTest {
   @Test
   @Order(2)
   void readyReturnsReadyWhenDatabaseIsUp() {
-    RestAssured.given()
-        .port(port)
+    given()
         .when()
         .get("/ready")
         .then()
@@ -92,12 +105,11 @@ class ObservabilityIntegrationTest {
   @Test
   @Order(3)
   void prometheusExposesRequiredMetrics() {
-    RestAssured.given().port(port).get("/health");
-    RestAssured.given().port(port).get("/ready");
+    given().get("/health");
+    given().get("/ready");
 
     String body =
-        RestAssured.given()
-            .port(port)
+        given()
             .when()
             .get("/actuator/prometheus")
             .then()
@@ -120,13 +132,7 @@ class ObservabilityIntegrationTest {
   void forbiddenActuatorEndpointsReturn404() {
     for (String suffix : List.of("env", "beans", "mappings", "configprops", "heapdump")) {
       int status =
-          RestAssured.given()
-              .port(port)
-              .when()
-              .get("/actuator/" + suffix)
-              .then()
-              .extract()
-              .statusCode();
+          given().when().get("/actuator/" + suffix).then().extract().statusCode();
       assertThat(status).as("/actuator/%s must not be exposed", suffix).isEqualTo(404);
     }
   }
@@ -135,7 +141,7 @@ class ObservabilityIntegrationTest {
   @Order(5)
   void actuatorDiscoveryListsOnlyAllowedEndpoints() throws Exception {
     String body =
-        RestAssured.given().port(port).when().get("/actuator").then().statusCode(200).extract().asString();
+        given().when().get("/actuator").then().statusCode(200).extract().asString();
     JsonNode links = mapper.readTree(body).get("_links");
     assertThat(links.propertyNames())
         .containsExactlyInAnyOrder("self", "health", "info", "prometheus");
@@ -144,12 +150,13 @@ class ObservabilityIntegrationTest {
   @Test
   @Order(6)
   void actuatorHealthReturns200WithoutBodyAssertion() {
-    RestAssured.given().port(port).when().get("/actuator/health").then().statusCode(200);
+    given().when().get("/actuator/health").then().statusCode(200);
   }
 
   @Test
   @Order(7)
   void concurrentReadyCallsAllReturnReady() throws Exception {
+    final int targetPort = port;
     ExecutorService exec = Executors.newFixedThreadPool(10);
     try {
       CompletableFuture<?>[] futures =
@@ -158,8 +165,9 @@ class ObservabilityIntegrationTest {
                   i ->
                       CompletableFuture.runAsync(
                           () ->
-                              RestAssured.given()
-                                  .port(port)
+                              given()
+                                  .baseUri("http://localhost")
+                                  .port(targetPort)
                                   .when()
                                   .get("/ready")
                                   .then()
@@ -178,8 +186,7 @@ class ObservabilityIntegrationTest {
   void requestIdHeaderIsEchoedOnHealth() {
     String id = "smoke-request-id-abc-123";
     String echoed =
-        RestAssured.given()
-            .port(port)
+        given()
             .header("X-Request-Id", id)
             .when()
             .get("/health")
@@ -196,8 +203,7 @@ class ObservabilityIntegrationTest {
     POSTGRES.stop();
     try {
       long start = System.currentTimeMillis();
-      RestAssured.given()
-          .port(port)
+      given()
           .when()
           .get("/ready")
           .then()

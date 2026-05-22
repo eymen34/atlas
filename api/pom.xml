@@ -26,7 +26,12 @@
     <archunit.version>1.4.1</archunit.version>
     <spotless.version>2.43.0</spotless.version>
     <testcontainers.version>1.21.3</testcontainers.version>
-    <rest-assured.version>5.5.0</rest-assured.version>
+    <rest-assured.version>5.5.2</rest-assured.version>
+    <!-- Override Spring Boot 4 parent BOM's Groovy 5 with Groovy 4. REST Assured
+         5.5.x is compiled against Groovy 4 and its JsonPath / Hamcrest body
+         assertion path NPEs on Groovy 5. The override applies project-wide
+         via dependencyManagement in the Boot parent. -->
+    <groovy.version>4.0.32</groovy.version>
     <!-- Override Spring Boot 4 parent BOM Flyway version. Locked to 10.20.x
          per architecture_decisions:migration_tool. -->
     <flyway.version>10.20.1</flyway.version>

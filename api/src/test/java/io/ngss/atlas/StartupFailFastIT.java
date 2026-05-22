@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import static io.restassured.RestAssured.given;
+
 import com.zaxxer.hikari.HikariDataSource;
 import io.restassured.RestAssured;
 import java.time.Duration;
 import javax.sql.DataSource;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,10 +58,20 @@ class StartupFailFastIT {
 
     @Autowired DataSource dataSource;
 
+    @BeforeEach
+    void configureRestAssured() {
+      RestAssured.baseURI = "http://localhost";
+      RestAssured.port = port;
+    }
+
+    @AfterEach
+    void resetRestAssured() {
+      RestAssured.reset();
+    }
+
     @Test
     void actuatorHealthReturnsUp() {
-      RestAssured.given()
-          .port(port)
+      given()
           .when()
           .get("/actuator/health")
           .then()
