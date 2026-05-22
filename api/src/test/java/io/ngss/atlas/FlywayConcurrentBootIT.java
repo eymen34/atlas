@@ -80,19 +80,24 @@ class FlywayConcurrentBootIT {
   }
 
   private ConfigurableApplicationContext bootInstance() {
+    // The DB connection properties MUST be passed as command-line args via
+    // .run("--key=value"). SpringApplicationBuilder.properties(...) registers
+    // them as defaultProperties — the lowest property-source priority, which
+    // is overridden by application.yml's
+    //   app.database.url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/atlas}
+    // line. --args land in the commandLineArgs source, which sits above yml.
     return new SpringApplicationBuilder(Application.class)
         .web(WebApplicationType.SERVLET)
-        .properties(
-            "server.port=0",
-            "app.database.url=" + postgres.getJdbcUrl(),
-            "app.database.username=" + postgres.getUsername(),
-            "app.database.password=" + postgres.getPassword(),
-            "spring.datasource.url=" + postgres.getJdbcUrl(),
-            "spring.datasource.username=" + postgres.getUsername(),
-            "spring.datasource.password=" + postgres.getPassword(),
-            "spring.datasource.driver-class-name=org.postgresql.Driver",
-            "spring.main.banner-mode=off")
-        .run();
+        .properties("spring.main.banner-mode=off")
+        .run(
+            "--server.port=0",
+            "--app.database.url=" + postgres.getJdbcUrl(),
+            "--app.database.username=" + postgres.getUsername(),
+            "--app.database.password=" + postgres.getPassword(),
+            "--spring.datasource.url=" + postgres.getJdbcUrl(),
+            "--spring.datasource.username=" + postgres.getUsername(),
+            "--spring.datasource.password=" + postgres.getPassword(),
+            "--spring.datasource.driver-class-name=org.postgresql.Driver");
   }
 
   private void assertExactlyOneSuccessfulV1(DataSource ds, String label) throws Exception {
