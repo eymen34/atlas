@@ -22,8 +22,11 @@
     <java.version>21</java.version>
     <archunit.version>1.3.0</archunit.version>
     <spotless.version>2.43.0</spotless.version>
-    <testcontainers.version>1.20.4</testcontainers.version>
+    <testcontainers.version>1.21.3</testcontainers.version>
     <rest-assured.version>5.5.0</rest-assured.version>
+    <!-- Override Spring Boot 4 parent BOM Flyway version. Locked to 10.20.x
+         per architecture_decisions:migration_tool. -->
+    <flyway.version>10.20.1</flyway.version>
   </properties>
 
   <dependencies>
@@ -47,6 +50,17 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+      <version>${flyway.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+      <version>${flyway.version}</version>
     </dependency>
 
     <dependency>

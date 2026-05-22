@@ -28,7 +28,7 @@ class StartupFailFastIT {
   @SpringBootTest(
       classes = Application.class,
       webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-  @Testcontainers
+  @Testcontainers(disabledWithoutDocker = true)
   class HappyPathContextLoads {
 
     @Container
