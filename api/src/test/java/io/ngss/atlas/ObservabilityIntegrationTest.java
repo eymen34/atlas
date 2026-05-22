@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.startsWith;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.RestAssured;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +23,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(
     classes = Application.class,
@@ -60,7 +60,7 @@ class ObservabilityIntegrationTest {
 
   @LocalServerPort int port;
 
-  @Autowired ObjectMapper mapper;
+  @Autowired JsonMapper mapper;
 
   @Test
   @Order(1)
@@ -137,8 +137,7 @@ class ObservabilityIntegrationTest {
     String body =
         RestAssured.given().port(port).when().get("/actuator").then().statusCode(200).extract().asString();
     JsonNode links = mapper.readTree(body).get("_links");
-    assertThat(links.fieldNames())
-        .toIterable()
+    assertThat(links.propertyNames())
         .containsExactlyInAnyOrder("self", "health", "info", "prometheus");
   }
 
