@@ -20,7 +20,10 @@
 
   <properties>
     <java.version>21</java.version>
-    <archunit.version>1.3.0</archunit.version>
+    <!-- ArchUnit 1.4.x bundles ASM 9.8+ which can parse class file major
+         version 70 (Java 26). 1.3.x ships an older ASM that throws
+         IllegalArgumentException on Java 26 bytecode during rule import. -->
+    <archunit.version>1.4.1</archunit.version>
     <spotless.version>2.43.0</spotless.version>
     <testcontainers.version>1.21.3</testcontainers.version>
     <rest-assured.version>5.5.0</rest-assured.version>
