@@ -43,9 +43,19 @@ class ObservabilityIntegrationTest {
 
   @DynamicPropertySource
   static void datasourceProperties(DynamicPropertyRegistry registry) {
+    // app.database.* — consumed by the custom DataSourceConfig @Bean
+    // (DatabaseProperties @ConfigurationProperties(prefix="app.database")).
     registry.add("app.database.url", POSTGRES::getJdbcUrl);
     registry.add("app.database.username", POSTGRES::getUsername);
     registry.add("app.database.password", POSTGRES::getPassword);
+    // spring.datasource.* — defensive: registered so any code path that
+    // reads Spring Boot's standard DataSource properties sees consistent
+    // values even though the custom @Bean DataSource short-circuits
+    // DataSourceAutoConfiguration in this setup.
+    registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+    registry.add("spring.datasource.username", POSTGRES::getUsername);
+    registry.add("spring.datasource.password", POSTGRES::getPassword);
+    registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
   }
 
   @LocalServerPort int port;

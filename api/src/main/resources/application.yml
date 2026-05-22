@@ -17,6 +17,12 @@ spring:
     name: atlas-api
   jpa:
     open-in-view: false
+    # Explicit dialect so Hibernate does not need to introspect JDBC metadata
+    # at boot. Required because hibernate.boot.allow_jdbc_metadata_access is
+    # set to false below (cold-start optimization). Without an explicit
+    # dialect, EntityManagerFactory creation fails with
+    # "Unable to determine Dialect without JDBC metadata".
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: none
     properties:

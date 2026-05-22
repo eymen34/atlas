@@ -87,6 +87,10 @@ class FlywayConcurrentBootIT {
             "app.database.url=" + postgres.getJdbcUrl(),
             "app.database.username=" + postgres.getUsername(),
             "app.database.password=" + postgres.getPassword(),
+            "spring.datasource.url=" + postgres.getJdbcUrl(),
+            "spring.datasource.username=" + postgres.getUsername(),
+            "spring.datasource.password=" + postgres.getPassword(),
+            "spring.datasource.driver-class-name=org.postgresql.Driver",
             "spring.main.banner-mode=off")
         .run();
   }

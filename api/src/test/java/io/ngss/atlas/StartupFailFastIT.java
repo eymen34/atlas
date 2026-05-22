@@ -44,6 +44,10 @@ class StartupFailFastIT {
       registry.add("app.database.url", POSTGRES::getJdbcUrl);
       registry.add("app.database.username", POSTGRES::getUsername);
       registry.add("app.database.password", POSTGRES::getPassword);
+      registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+      registry.add("spring.datasource.username", POSTGRES::getUsername);
+      registry.add("spring.datasource.password", POSTGRES::getPassword);
+      registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
     }
 
     @LocalServerPort int port;
