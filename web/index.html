@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  CSP-safe: no inline scripts, no inline styles, no inline event handlers,
+  no <style> blocks, no javascript: URIs. Compatible with a future
+  `script-src 'self'` + `style-src 'self'` Spring Security CSP.
+  All JavaScript lives in /src/main.tsx (external module script).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Atlas</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

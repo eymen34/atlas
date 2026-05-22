@@ -1,0 +1,74 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Java 21, Maven, Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Maven verify (unit + Failsafe integration via Testcontainers)
+        run: ./mvnw -pl api -am --batch-mode --no-transfer-progress verify
+
+  frontend:
+    name: Frontend (Vite, TypeScript 6, Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Assert no Tailwind v3 config
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/assert-no-tailwind-config.sh
+
+      - name: Assert no TS suppressions
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/assert-no-ts-suppressions.sh
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke
+        run: npm run e2e
+
+      - name: npm audit (HIGH/CRITICAL block)
+        run: npm audit --omit=dev --audit-level=high

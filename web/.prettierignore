@@ -1,0 +1,6 @@
+dist
+node_modules
+coverage
+playwright-report
+src/api/generated
+package-lock.json
