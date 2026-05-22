@@ -63,11 +63,19 @@
       <artifactId>postgresql</artifactId>
     </dependency>
 
+    <!-- spring-boot-starter-flyway pulls in the Boot-4 Flyway autoconfig
+         (spring-boot-flyway module) which actually creates the Flyway bean,
+         reads spring.flyway.* properties, and runs migrate() on startup.
+         flyway-core alone (the library) does nothing without this glue —
+         Spring Boot 4 split the autoconfig out of spring-boot-autoconfigure
+         into its own module, so the starter is now mandatory. -->
     <dependency>
-      <groupId>org.flywaydb</groupId>
-      <artifactId>flyway-core</artifactId>
-      <version>${flyway.version}</version>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
     </dependency>
+    <!-- flyway-database-postgresql is the dialect plugin; the starter only
+         depends on flyway-core. flyway.version is locked to 10.20.1 via the
+         <properties> override; the starter inherits that. -->
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>
