@@ -85,6 +85,16 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+  # T-011: springdoc 2.6.0 is built against Spring 6. On Spring Framework 7
+  # (Boot 4) its generic-response builder calls the removed
+  # ControllerAdviceBean(Object) constructor as soon as ANY @ControllerAdvice
+  # bean exists (GlobalExceptionHandler), throwing NoSuchMethodError and 500-ing
+  # /v3/api-docs. We declare per-endpoint @ApiResponses explicitly, so the
+  # automatic merge of @ControllerAdvice @ExceptionHandler responses is not
+  # needed — disable it. This is a config knob, NOT a version upgrade / shim /
+  # autoconfig exclusion (see springdoc_boot4_aot_incompatibility). Re-evaluate
+  # when springdoc ships a Boot-4-compatible release.
+  override-with-generic-response: false
 
 app:
   cors:

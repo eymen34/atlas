@@ -165,25 +165,35 @@
           "required" : true
         },
         "responses" : {
-          "200" : {
+          "201" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/AuthResponse"
+                  "$ref" : "#/components/schemas/UserRegisteredResponse"
                 }
               }
             },
-            "description" : "Successful registration (T-011)"
+            "description" : "User created"
           },
-          "501" : {
+          "400" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                  "$ref" : "#/components/schemas/UserRegisteredResponse"
                 }
               }
             },
-            "description" : "Stub — not yet implemented"
+            "description" : "Validation error"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserRegisteredResponse"
+                }
+              }
+            },
+            "description" : "Email already registered"
           }
         },
         "summary" : "Register a new user account",
@@ -285,16 +295,22 @@
       "RegisterRequest" : {
         "type" : "object",
         "properties" : {
+          "displayName" : {
+            "maxLength" : 80,
+            "minLength" : 1,
+            "type" : "string"
+          },
           "email" : {
             "type" : "string"
           },
           "password" : {
             "maxLength" : 72,
-            "minLength" : 8,
-            "type" : "string"
+            "minLength" : 10,
+            "type" : "string",
+            "writeOnly" : true
           }
         },
-        "required" : [ "email", "password" ]
+        "required" : [ "displayName", "email", "password" ]
       },
       "UserProfileResponse" : {
         "type" : "object",
@@ -302,6 +318,25 @@
           "createdAt" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "UserRegisteredResponse" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "displayName" : {
+            "type" : "string"
           },
           "email" : {
             "type" : "string"

@@ -6,6 +6,8 @@ import io.ngss.atlas.auth.dto.NotImplementedResponse;
 import io.ngss.atlas.auth.dto.RefreshRequest;
 import io.ngss.atlas.auth.dto.RegisterRequest;
 import io.ngss.atlas.auth.dto.UserProfileResponse;
+import io.ngss.atlas.auth.dto.UserRegisteredResponse;
+import io.ngss.atlas.domain.RegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -42,20 +44,24 @@ public class AuthController {
   private static final NotImplementedResponse STUB =
       new NotImplementedResponse("NOT_IMPLEMENTED", "Endpoint not yet implemented (T-011/T-012)");
 
+  private final RegistrationService registrationService;
+
+  public AuthController(RegistrationService registrationService) {
+    this.registrationService = registrationService;
+  }
+
   @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "Register a new user account")
   @ApiResponses({
     @ApiResponse(
-        responseCode = "200",
-        description = "Successful registration (T-011)",
-        content = @Content(schema = @Schema(implementation = AuthResponse.class))),
-    @ApiResponse(
-        responseCode = "501",
-        description = "Stub — not yet implemented",
-        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+        responseCode = "201",
+        description = "User created",
+        content = @Content(schema = @Schema(implementation = UserRegisteredResponse.class))),
+    @ApiResponse(responseCode = "400", description = "Validation error"),
+    @ApiResponse(responseCode = "409", description = "Email already registered")
   })
-  public ResponseEntity<NotImplementedResponse> register(@Valid @RequestBody RegisterRequest req) {
-    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  public ResponseEntity<UserRegisteredResponse> register(@Valid @RequestBody RegisterRequest req) {
+    return ResponseEntity.status(HttpStatus.CREATED).body(registrationService.register(req));
   }
 
   @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)

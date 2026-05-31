@@ -15,6 +15,8 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -148,5 +150,21 @@ public class SecurityConfig {
   UserDetailsService noOpUserDetailsService() {
     return new InMemoryUserDetailsManager(
         User.withUsername("placeholder").password("{noop}placeholder").authorities("USER").build());
+  }
+
+  /**
+   * BCrypt encoder for password hashing (T-011 registration; T-012 login). Cost
+   * is env-tunable via BCRYPT_COST (default 12 per env_var_convention). Returns
+   * the $2a variant, so encoded hashes start with {@code $2a$<cost>$}.
+   *
+   * <p>AppCDS-safe: no secret or external dependency, default cost is valid, so
+   * the bean constructs cleanly during the stage-3 no-DB boot.
+   */
+  @Bean
+  PasswordEncoder passwordEncoder(@Value("${BCRYPT_COST:12}") int bcryptCost) {
+    if (bcryptCost < 4 || bcryptCost > 31) {
+      throw new IllegalStateException("BCRYPT_COST must be in [4,31], got " + bcryptCost);
+    }
+    return new BCryptPasswordEncoder(bcryptCost);
   }
 }

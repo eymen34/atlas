@@ -127,14 +127,19 @@ class SecurityIT {
   }
 
   @Test
-  void registerReturns501Unauthenticated() {
+  void registerReachableUnauthenticatedReturns400OnInvalidBody() {
+    // T-011 turned register into a real endpoint (was a 501 stub). This stays a
+    // SECURITY assertion: register is permitted without auth, so an invalid body
+    // (missing displayName) reaches bean validation and returns 400 — proving it
+    // is NOT blocked by the security filter (401/403). Full registration
+    // behaviour is covered by RegisterIT.
     given()
         .contentType("application/json")
         .body("{\"email\":\"a@b.com\",\"password\":\"password123\"}")
         .when()
         .post("/api/auth/register")
         .then()
-        .statusCode(501)
+        .statusCode(400)
         .contentType("application/json");
   }
 
