@@ -92,8 +92,12 @@ class V2MigrationIT {
   @Test
   void tokenHashUniqueConstraintIsEnforcedAtDatabaseLevel() {
     UUID userId = UUID.randomUUID();
+    // display_name is NOT NULL as of V3 (T-011); include it in the fixture.
     jdbc.update(
-        "INSERT INTO users (id, email) VALUES (?, ?)", userId, "uniq-test@example.com");
+        "INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
+        userId,
+        "uniq-test@example.com",
+        "uniq-test");
     String hash = "a".repeat(64);
     jdbc.update(
         "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) "
