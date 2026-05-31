@@ -1,8 +1,97 @@
-# Sprint 0 skeleton — intentionally empty.
+# Atlas — local development stack.
 #
-# Full service definitions (app, postgres, minio) arrive in the
-# infrastructure ticket. This stub exists so that `docker compose
-# -f deploy/docker-compose.yml config --quiet` exits 0 from day one
-# and so the file path is reserved in the repository skeleton.
+# Run from repo root:
+#   cp .env.example .env
+#   docker compose -f deploy/docker-compose.yml up --build --wait
+#
+# Services:
+#   db          PostgreSQL 17 (pgdata persisted in postgres_data volume)
+#   objectstore MinIO S3-compatible store (data in minio_data volume)
+#   mc-init     one-shot bucket bootstrap, exits 0 when ready
+#   app         atlas:dev built from /Dockerfile.dev, depends on the
+#               three above being healthy / completed
+#
+# No top-level `version:` key — modern Compose Specification (the legacy
+# key triggers deprecation warnings and is ignored anyway).
 
-services: {}
+services:
+  db:
+    image: postgres:17-alpine
+    env_file: ["../.env"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      # $$ double-dollar prevents Compose from interpolating these at
+      # parse time; the postgres container needs to see them as literal
+      # $POSTGRES_USER / $POSTGRES_DB so its shell can resolve them.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  objectstore:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    env_file: ["../.env"]
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console (http://localhost:9001)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  mc-init:
+    image: minio/mc:latest
+    restart: on-failure
+    depends_on:
+      objectstore:
+        condition: service_healthy
+    env_file: ["../.env"]
+    entrypoint: ["/bin/sh", "-c"]
+    # WARNING — LOCAL DEVELOPMENT ONLY. The `mc anonymous set download`
+    # line below makes every object in the bucket world-readable by
+    # anonymous HTTP GET. Production MUST keep the bucket private and
+    # serve objects exclusively via short-lived presigned URLs (per the
+    # object_storage architecture decision). Do NOT lift this block into
+    # any prod compose override.
+    command:
+      - |
+        mc alias set local http://objectstore:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET &&
+        mc anonymous set download local/$$OBJECT_STORAGE_BUCKET
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile.dev
+    image: atlas:dev
+    depends_on:
+      db:
+        condition: service_healthy
+      objectstore:
+        condition: service_healthy
+      mc-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    env_file: ["../.env"]
+    healthcheck:
+      # /ready performs a DB ping; this gates `docker compose up --wait`
+      # on the app actually serving traffic, not just having a PID.
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  postgres_data: {}
+  minio_data: {}
