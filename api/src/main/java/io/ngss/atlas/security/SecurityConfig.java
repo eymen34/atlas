@@ -72,7 +72,20 @@ public class SecurityConfig {
                 auth
                     // Unauthenticated observability + docs.
                     .requestMatchers(HttpMethod.GET, "/health", "/ready").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
+                    // Actuator surface T-005 designed: /actuator (discovery
+                    // link index), /actuator/health (+ groups), and
+                    // /actuator/prometheus are reachable without auth so
+                    // load balancers and Prometheus scrape can hit them.
+                    // Sensitive actuator paths (env, beans, configprops,
+                    // info, heapdump, …) stay protected by the catch-all
+                    // /actuator/** authenticated rule below.
+                    .requestMatchers(
+                            HttpMethod.GET,
+                            "/actuator",
+                            "/actuator/health",
+                            "/actuator/health/**",
+                            "/actuator/prometheus")
+                        .permitAll()
                     .requestMatchers(
                             "/v3/api-docs",
                             "/v3/api-docs/**",

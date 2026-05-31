@@ -126,11 +126,22 @@ class ObservabilityIntegrationTest {
 
   @Test
   @Order(4)
-  void forbiddenActuatorEndpointsReturn404() {
+  void forbiddenActuatorEndpointsAreUnreachable() {
+    // Pre-T-009: these endpoints returned 404 because
+    // management.endpoints.web.exposure.include was the only gate and the
+    // Actuator exposure layer responded with "not exposed".
+    // Post-T-009: Spring Security's filter chain runs first and intercepts
+    // unauthenticated requests to non-permitted /actuator/** paths with
+    // 401 BEFORE Actuator can answer. The security posture is
+    // equivalent-or-stronger (the endpoint is unreachable either way; 401
+    // vs 404 is just which layer denies it). The exposure list is still
+    // narrow (verified by actuatorDiscoveryListsOnlyAllowedEndpoints
+    // below), so even an authenticated caller would still see 404 for
+    // these paths.
     for (String suffix : List.of("env", "beans", "mappings", "configprops", "heapdump")) {
       int status =
           given().when().get("/actuator/" + suffix).then().extract().statusCode();
-      assertThat(status).as("/actuator/%s must not be exposed", suffix).isEqualTo(404);
+      assertThat(status).as("/actuator/%s must not be reachable", suffix).isEqualTo(401);
     }
   }
 
