@@ -303,5 +303,118 @@
         </plugins>
       </build>
     </profile>
+
+    <!--
+      T-010 build-time OpenAPI spec dump. Active by default so a plain
+      `mvn -pl api verify` regenerates src/main/resources/openapi/openapi.json
+      and the CI drift-check stays meaningful. Maven disables an
+      activeByDefault profile whenever ANY profile is selected explicitly
+      (e.g. `-P aot`), so AOT runs never boot the app for a spec dump.
+
+      Mechanism — RUNTIME boot, never AOT (see the
+      springdoc_boot4_aot_incompatibility decision; process-aot stays in the
+      `aot` profile above):
+
+        pre-integration-test   spring-boot:start boots the app under the
+                               `specgen` Spring profile. No database is needed:
+                               Flyway and the DatabaseStartupValidator ping are
+                               switched off in application-specgen.properties,
+                               and the base application.yml already supplies the
+                               no-JDBC Hibernate cold-start config.
+        integration-test       springdoc:generate GETs /v3/api-docs and writes
+                               ${project.build.directory}/openapi.json. The
+                               `specgen` profile turns on springdoc key-sorting +
+                               pretty-printing so the dump is canonical and
+                               byte-stable across machines — no external `jq`.
+        post-integration-test  spring-boot:stop.
+        verify                 antrun copies the dumped spec over the committed
+                               src/main/resources/openapi/openapi.json.
+
+      H2 is deliberately NOT added: the custom DataSourceConfig ignores
+      spring.datasource.* and DatabaseProperties.url is regex-locked to a
+      Postgres JDBC URL, so H2 cannot back this app — and it is not needed,
+      because nothing opens a connection during the dump.
+    -->
+    <profile>
+      <id>specgen-build</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>spec-dump-start</id>
+                <phase>pre-integration-test</phase>
+                <goals>
+                  <goal>start</goal>
+                </goals>
+                <configuration>
+                  <profiles>
+                    <profile>specgen</profile>
+                  </profiles>
+                  <!-- Surface a hung start fast: poll every 1s, give up at 120. -->
+                  <wait>1000</wait>
+                  <maxAttempts>120</maxAttempts>
+                </configuration>
+              </execution>
+              <execution>
+                <id>spec-dump-stop</id>
+                <phase>post-integration-test</phase>
+                <goals>
+                  <goal>stop</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-maven-plugin</artifactId>
+            <version>1.4</version>
+            <executions>
+              <execution>
+                <id>dump-spec</id>
+                <phase>integration-test</phase>
+                <goals>
+                  <goal>generate</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <apiDocsUrl>http://localhost:8080/v3/api-docs</apiDocsUrl>
+              <outputFileName>openapi.json</outputFileName>
+              <outputDir>${project.build.directory}</outputDir>
+            </configuration>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>copy-openapi-spec</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.basedir}/src/main/resources/openapi"/>
+                    <copy
+                        file="${project.build.directory}/openapi.json"
+                        tofile="${project.basedir}/src/main/resources/openapi/openapi.json"
+                        overwrite="true"/>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
   </profiles>
 </project>
