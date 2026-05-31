@@ -64,12 +64,6 @@ jobs:
       - name: Unit tests (Vitest)
         run: npm test
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Playwright smoke
-        run: npm run e2e
-
       - name: npm audit (HIGH/CRITICAL block)
         run: npm audit --omit=dev --audit-level=high
 
@@ -164,20 +158,78 @@ jobs:
             exit 1
           fi
 
+  e2e-smoke:
+    name: Frontend e2e smoke (Playwright vs Vite preview :4173)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [frontend]
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          # Browser binaries only. System apt packages (libnss3 etc.) are
+          # NOT cached here — they're reinstalled on cache-hit via the
+          # install-deps step below, which is fast and idempotent.
+          path: ~/.cache/ms-playwright
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright Chromium (cache miss)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Build frontend bundle
+        run: npm run build
+
+      - name: Run Playwright smoke (preview server auto-started by webServer)
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   pr-gate:
     name: PR gate
     runs-on: ubuntu-latest
-    needs: [backend, frontend, docker-build]
+    needs: [backend, frontend, docker-build, e2e-smoke]
     if: always()
     steps:
       - name: Fail if any required job failed
         run: |
           if [ "${{ needs.backend.result }}" != "success" ] \
               || [ "${{ needs.frontend.result }}" != "success" ] \
-              || [ "${{ needs.docker-build.result }}" != "success" ]; then
+              || [ "${{ needs.docker-build.result }}" != "success" ] \
+              || [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
             echo "::error::one or more required PR jobs failed"
             echo "backend=${{ needs.backend.result }}"
             echo "frontend=${{ needs.frontend.result }}"
             echo "docker-build=${{ needs.docker-build.result }}"
+            echo "e2e-smoke=${{ needs.e2e-smoke.result }}"
             exit 1
           fi
