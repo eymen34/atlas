@@ -27,6 +27,14 @@ jobs:
       - name: Maven verify (unit + Failsafe integration via Testcontainers)
         run: ./mvnw -pl api -am --batch-mode --no-transfer-progress verify
 
+      # T-010: `mvn verify` re-dumps /v3/api-docs over the committed spec via the
+      # specgen-build profile. If the regenerated spec differs from what was
+      # committed, the author forgot to run verify + commit the new spec.
+      - name: Check OpenAPI spec drift
+        run: |
+          git diff --exit-code api/src/main/resources/openapi/openapi.json || \
+          (echo "OpenAPI spec changed but committed openapi/openapi.json not updated — run mvn verify and commit the spec" && exit 1)
+
   frontend:
     name: Frontend (Vite, TypeScript 6, Vitest)
     runs-on: ubuntu-latest

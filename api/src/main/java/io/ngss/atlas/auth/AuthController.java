@@ -106,7 +106,10 @@ public class AuthController {
 
   @GetMapping("/me")
   @SecurityRequirement(name = "bearerAuth")
-  @Operation(summary = "Return the authenticated user's profile")
+  // Explicit operationId: springdoc would otherwise derive it from the Java
+  // method name ("me"), which generates an awkward AuthService.me() client
+  // method. "getMe" gives the T-010 TS client a clear AuthService.getMe().
+  @Operation(operationId = "getMe", summary = "Return the authenticated user's profile")
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",

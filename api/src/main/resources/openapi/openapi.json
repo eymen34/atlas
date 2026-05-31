@@ -1,0 +1,324 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost:8080",
+    "description" : "Generated server url"
+  } ],
+  "paths" : {
+    "/api/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Successful login (T-011)"
+          },
+          "501" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Stub — not yet implemented"
+          }
+        },
+        "summary" : "Authenticate with email + password and receive token pair",
+        "tags" : [ "auth" ]
+      }
+    },
+    "/api/auth/logout" : {
+      "post" : {
+        "operationId" : "logout",
+        "responses" : {
+          "204" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Successful logout (T-012)"
+          },
+          "501" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Stub — not yet implemented"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Revoke the caller's refresh token",
+        "tags" : [ "auth" ]
+      }
+    },
+    "/api/auth/me" : {
+      "get" : {
+        "operationId" : "getMe",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserProfileResponse"
+                }
+              }
+            },
+            "description" : "Profile retrieved (T-011)"
+          },
+          "501" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Stub — not yet implemented"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Return the authenticated user's profile",
+        "tags" : [ "auth" ]
+      }
+    },
+    "/api/auth/refresh" : {
+      "post" : {
+        "operationId" : "refresh",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Successful refresh (T-012)"
+          },
+          "501" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Stub — not yet implemented"
+          }
+        },
+        "summary" : "Exchange a refresh token for a fresh access + refresh pair",
+        "tags" : [ "auth" ]
+      }
+    },
+    "/api/auth/register" : {
+      "post" : {
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Successful registration (T-011)"
+          },
+          "501" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                }
+              }
+            },
+            "description" : "Stub — not yet implemented"
+          }
+        },
+        "summary" : "Register a new user account",
+        "tags" : [ "auth" ]
+      }
+    },
+    "/health" : {
+      "get" : {
+        "operationId" : "health",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "string"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "health-controller" ]
+      }
+    },
+    "/ready" : {
+      "get" : {
+        "operationId" : "ready",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "string"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "ready-controller" ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "AuthResponse" : {
+        "type" : "object",
+        "properties" : {
+          "accessToken" : {
+            "type" : "string"
+          },
+          "expiresIn" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "refreshToken" : {
+            "type" : "string"
+          }
+        }
+      },
+      "LoginRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "password" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "email", "password" ]
+      },
+      "NotImplementedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "error" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          }
+        }
+      },
+      "RefreshRequest" : {
+        "type" : "object",
+        "properties" : {
+          "refreshToken" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "refreshToken" ]
+      },
+      "RegisterRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 72,
+            "minLength" : 8,
+            "type" : "string"
+          }
+        },
+        "required" : [ "email", "password" ]
+      },
+      "UserProfileResponse" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "bearerFormat" : "JWT",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  }
+}
