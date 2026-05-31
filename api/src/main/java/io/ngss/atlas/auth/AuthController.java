@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,14 +30,19 @@ import org.springframework.web.bind.annotation.RestController;
  * TS client against this contract; T-011/T-012 implement the bodies.
  */
 @RestController
-@RequestMapping("/api/auth")
+// Class-level produces locks the OpenAPI response content-type to
+// application/json (without it, springdoc emits "*/*" which T-010's TS
+// client codegen reads as an opaque media type). Per-method consumes on
+// the three POSTs with @RequestBody mirrors the same contract on the
+// request side.
+@RequestMapping(value = "/api/auth", produces = MediaType.APPLICATION_JSON_VALUE)
 @Tag(name = "auth")
 public class AuthController {
 
   private static final NotImplementedResponse STUB =
       new NotImplementedResponse("NOT_IMPLEMENTED", "Endpoint not yet implemented (T-011/T-012)");
 
-  @PostMapping("/register")
+  @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "Register a new user account")
   @ApiResponses({
     @ApiResponse(
@@ -52,7 +58,7 @@ public class AuthController {
     return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
   }
 
-  @PostMapping("/login")
+  @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "Authenticate with email + password and receive token pair")
   @ApiResponses({
     @ApiResponse(
@@ -68,7 +74,7 @@ public class AuthController {
     return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
   }
 
-  @PostMapping("/refresh")
+  @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "Exchange a refresh token for a fresh access + refresh pair")
   @ApiResponses({
     @ApiResponse(

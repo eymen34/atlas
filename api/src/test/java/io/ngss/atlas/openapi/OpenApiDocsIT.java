@@ -94,16 +94,23 @@ class OpenApiDocsIT {
     JsonNode root =
         objectMapper.readTree(
             given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+    // .path() returns MissingNode on absent keys (never null), so a mismatch
+    // surfaces as an AssertJ failure with a clear message rather than an NPE.
     JsonNode ref =
-        root.get("paths")
-            .get("/api/auth/login")
-            .get("post")
-            .get("responses")
-            .get("200")
-            .get("content")
-            .get("application/json")
-            .get("schema")
-            .get("$ref");
+        root.path("paths")
+            .path("/api/auth/login")
+            .path("post")
+            .path("responses")
+            .path("200")
+            .path("content")
+            .path("application/json")
+            .path("schema")
+            .path("$ref");
+    assertThat(ref.isMissingNode() || ref.isNull())
+        .as(
+            "expected /api/auth/login POST 200 response to declare an application/json schema "
+                + "$ref to AuthResponse; navigation result was missing/null")
+        .isFalse();
     assertThat(ref.asString()).contains("AuthResponse");
   }
 
@@ -113,14 +120,19 @@ class OpenApiDocsIT {
         objectMapper.readTree(
             given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
     JsonNode ref =
-        root.get("paths")
-            .get("/api/auth/register")
-            .get("post")
-            .get("requestBody")
-            .get("content")
-            .get("application/json")
-            .get("schema")
-            .get("$ref");
+        root.path("paths")
+            .path("/api/auth/register")
+            .path("post")
+            .path("requestBody")
+            .path("content")
+            .path("application/json")
+            .path("schema")
+            .path("$ref");
+    assertThat(ref.isMissingNode() || ref.isNull())
+        .as(
+            "expected /api/auth/register POST requestBody to declare an application/json schema "
+                + "$ref to RegisterRequest; navigation result was missing/null")
+        .isFalse();
     assertThat(ref.asString()).contains("RegisterRequest");
   }
 
@@ -130,21 +142,27 @@ class OpenApiDocsIT {
         objectMapper.readTree(
             given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
 
-    JsonNode meSecurity = root.get("paths").get("/api/auth/me").get("get").get("security");
-    assertThat(meSecurity).as("/api/auth/me security").isNotNull();
+    JsonNode meSecurity = root.path("paths").path("/api/auth/me").path("get").path("security");
+    assertThat(meSecurity.isMissingNode())
+        .as("/api/auth/me GET must declare a `security` array")
+        .isFalse();
     assertThat(meSecurity.isArray() && !meSecurity.isEmpty()).isTrue();
-    assertThat(meSecurity.get(0).has("bearerAuth")).isTrue();
+    assertThat(meSecurity.path(0).has("bearerAuth")).isTrue();
 
     JsonNode logoutSecurity =
-        root.get("paths").get("/api/auth/logout").get("post").get("security");
-    assertThat(logoutSecurity).as("/api/auth/logout security").isNotNull();
+        root.path("paths").path("/api/auth/logout").path("post").path("security");
+    assertThat(logoutSecurity.isMissingNode())
+        .as("/api/auth/logout POST must declare a `security` array")
+        .isFalse();
     assertThat(logoutSecurity.isArray() && !logoutSecurity.isEmpty()).isTrue();
-    assertThat(logoutSecurity.get(0).has("bearerAuth")).isTrue();
+    assertThat(logoutSecurity.path(0).has("bearerAuth")).isTrue();
 
-    JsonNode securitySchemes = root.get("components").get("securitySchemes");
-    assertThat(securitySchemes).isNotNull();
+    JsonNode securitySchemes = root.path("components").path("securitySchemes");
+    assertThat(securitySchemes.isMissingNode())
+        .as("components.securitySchemes must be present")
+        .isFalse();
     assertThat(securitySchemes.has("bearerAuth")).isTrue();
-    assertThat(securitySchemes.get("bearerAuth").get("scheme").asString()).isEqualTo("bearer");
-    assertThat(securitySchemes.get("bearerAuth").get("bearerFormat").asString()).isEqualTo("JWT");
+    assertThat(securitySchemes.path("bearerAuth").path("scheme").asString()).isEqualTo("bearer");
+    assertThat(securitySchemes.path("bearerAuth").path("bearerFormat").asString()).isEqualTo("JWT");
   }
 }
