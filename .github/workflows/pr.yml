@@ -134,10 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           # Defense-in-depth: the docker-build job must never publish.
-          # Regex character-classes (e.g. [/]) keep the patterns from
-          # matching themselves when grepped against this very file.
+          # Exclude this guard's own descriptive lines (the step name and the
+          # echo diagnostics legitimately contain the words "docker push /
+          # login"); a real publish directive lives in a run: or uses: line.
           if grep -nE '(docker[[:space:]]+push|docker[[:space:]]+login|docker[/]login-action)' \
-              .github/workflows/pr.yml; then
+              .github/workflows/pr.yml \
+              | grep -vE '(name:|echo |# )'; then
             echo "::error::pr.yml contains a docker push / login directive"
             exit 1
           fi
