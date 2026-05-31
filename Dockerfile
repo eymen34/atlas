@@ -25,6 +25,12 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+# T-010: stage the committed OpenAPI spec into this otherwise web-only build
+# context. `npm run build` -> prebuild -> codegen reads web/openapi.json; the
+# tolerant scripts/copy-spec.mjs sees the canonical ../api source is absent here
+# and uses this staged copy. Without this COPY, codegen ENOENTs in Docker even
+# though it works locally (full repo on disk).
+COPY api/src/main/resources/openapi/openapi.json ./openapi.json
 RUN npm run build
 
 
