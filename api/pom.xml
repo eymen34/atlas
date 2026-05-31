@@ -58,6 +58,17 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- T-009: Spring Security 6 (Boot 4 BOM-managed) + Nimbus JOSE for
+         HS256 JWT verification in JwtAuthenticationFilter. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-oauth2-jose</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
@@ -94,6 +105,15 @@
       <version>${logstash-logback-encoder.version}</version>
     </dependency>
 
+    <!-- springdoc-openapi targets Spring Boot 3.x. Pinned 2.6.0 per
+         architecture_decisions:api_style. T-009 verifies it boots on
+         Boot 4.0.6 / Spring Framework 7.0.7 before any further work. -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>2.6.0</version>
+    </dependency>
+
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
@@ -104,6 +124,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -146,22 +171,32 @@
           </excludes>
         </configuration>
         <!--
-          Bind process-aot to prepare-package so AOT bean-definition
-          generation runs BEFORE the fat jar is sealed during
-          `mvn -B -DskipTests package` (the command stage 2 of /Dockerfile
-          runs). Without this binding the AOT classes / generated
-          reflect-config metadata are not included in the jar and the
-          SPRING_AOT_ENABLED=true runtime flag has nothing to load.
+          AOT bean-definition generation is OPT-IN via the `aot` profile
+          below (see the <profiles> section at the bottom of this POM).
+
+          History: T-006 originally bound process-aot to prepare-package
+          so `mvn package` produced an AOT-warmed fat jar for the
+          Dockerfile stage 2 build. T-009 added springdoc-openapi 2.6.0,
+          which transitively triggers a Boot-4 incompatibility during
+          AOT introspection:
+
+            springdoc 2.6.0's `QuerydslPredicateOperationCustomizer`
+            references `org.springframework.data.util.TypeInformation`
+            (Spring Data 3.x location). Spring Data 4.0.5 — the version
+            shipped with Boot 4.0.6 — moved the class to
+            `org.springframework.data.core.TypeInformation`. AOT
+            introspects every potentially-registered bean (including
+            those guarded by @ConditionalOnClass(Querydsl…)) and a
+            reflective `Class.getDeclaredMethods()` on the customizer
+            raises NoClassDefFoundError on the now-absent `util` symbol.
+
+          Runtime is unaffected because the Querydsl-gated bean is never
+          instantiated (no Querydsl on the classpath). Only AOT-time
+          introspection trips the missing symbol.
+
+          Re-enable the default binding when springdoc ships a Boot-4
+          compatible release that updates the TypeInformation import.
         -->
-        <executions>
-          <execution>
-            <id>process-aot</id>
-            <phase>prepare-package</phase>
-            <goals>
-              <goal>process-aot</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
 
       <!--
@@ -232,4 +267,41 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Opt-in AOT processing. Activate with `mvn -P aot …` to exercise
+      the same prepare-package binding T-006 originally added. Kept as a
+      live regression check so we know the day springdoc + Boot 4 + AOT
+      can co-exist again (see the comment block in the spring-boot-
+      maven-plugin <executions> section above for the full context).
+
+      Build the Dockerfile WITHOUT this profile until further notice:
+      stage 2's `mvn package` works without AOT artifacts, and stage 3's
+      AppCDS warm-up does NOT depend on AOT — it simply class-loads the
+      jar under -Dspring.context.exit=onRefresh and archives the loaded
+      classes. Cold-start loses the ~100–200 ms AOT bean-definition
+      win; the AppCDS ~200–400 ms win is unaffected.
+    -->
+    <profile>
+      <id>aot</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>process-aot</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>process-aot</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

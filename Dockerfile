@@ -35,9 +35,15 @@ RUN npm run build
 # repo is populated as a separate, cacheable layer that ONLY invalidates
 # when pom.xml changes. 2b then copies the frontend bundle and api/src
 # and packages the jar. The spring-boot-maven-plugin process-aot goal is
-# bound to the prepare-package phase in api/pom.xml so AOT bean-definition
-# metadata is generated and sealed inside the fat jar without us needing
-# to call the goal explicitly here.
+# OPT-IN AOT (T-009): the spring-boot-maven-plugin `process-aot` goal is
+# no longer bound to prepare-package by default — it's behind the `aot`
+# Maven profile because springdoc 2.6.0 + Spring Data 4.0.5 cannot
+# co-exist under AOT introspection today (see the rationale block in
+# api/pom.xml). Stage 2 therefore ships a jar WITHOUT AOT bean
+# definitions; stage 3's AppCDS warm-up still works because AppCDS
+# operates on the runtime class graph, not on AOT artifacts. Re-enable
+# by appending `-P aot` to the mvn package command below when springdoc
+# ships Boot-4-compatible bytecode.
 #
 # `api/.mvn*` uses a glob so the COPY succeeds whether or not api/.mvn
 # exists; BuildKit COPY tolerates a zero-match glob as long as at least
@@ -90,6 +96,12 @@ RUN --mount=type=cache,target=/root/.m2 \
 #   * -Dspring.context.exit=onRefresh tells Spring to exit the JVM cleanly
 #     once context refresh completes (this is what triggers the JVM to
 #     flush the AppCDS archive).
+#   * JWT_SECRET (T-009) is supplied as a 48-char placeholder so the
+#     security autoconfig + JwtAuthenticationFilter bean wire without
+#     blowing up on a blank-secret edge path. The placeholder length
+#     satisfies Nimbus HS256's ≥256-bit minimum if any future bean
+#     constructs a MACVerifier eagerly. Real deployments override via the
+#     stage-4 runtime env; the placeholder is throwaway.
 #
 # CRITICAL: these are inline RUN env vars, NOT ENV directives. Promoting
 # them to ENV would bake the throwaway placeholder URL/credentials into
@@ -113,6 +125,7 @@ RUN APP_DATABASE_URL=jdbc:postgresql://cds-build-placeholder:5432/atlas \
     SPRING_FLYWAY_ENABLED=false \
     SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT=-1 \
     SPRING_AOT_ENABLED=true \
+    JWT_SECRET=cds-build-placeholder-secret-min-32-characters-long \
     timeout 120 java \
       -XX:ArchiveClassesAtExit=/build/app.jsa \
       -Dspring.context.exit=onRefresh \

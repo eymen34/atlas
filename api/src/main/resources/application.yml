@@ -78,7 +78,22 @@ management:
       # versions.
       enabled: true
 
+springdoc:
+  api-docs:
+    # Pin the OpenAPI document path so the springdoc upgrade path is
+    # auditable. T-010 generates the frontend TS client against this URL.
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
 app:
+  cors:
+    # Comma-separated list, trimmed by SecurityConfig. Default covers the
+    # Vite dev server (:5173) and the Vite preview server (:4173) used by
+    # the e2e-smoke Playwright job. Override via APP_CORS_ALLOWED_ORIGINS
+    # in any deployed environment — never use "*" because
+    # allowCredentials=true forbids the wildcard.
+    allowed-origins: http://localhost:5173,http://localhost:4173
   database:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/atlas}
     username: ${DATABASE_USERNAME:atlas}

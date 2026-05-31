@@ -34,8 +34,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
-  static final String HEADER = "X-Request-Id";
-  static final String MDC_KEY = "request_id";
+  public static final String HEADER = "X-Request-Id";
+  public static final String MDC_KEY = "request_id";
   static final Pattern REQUEST_ID = Pattern.compile("^[a-zA-Z0-9-]{1,128}$");
 
   @Override

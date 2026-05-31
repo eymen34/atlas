@@ -1,0 +1,117 @@
+package io.ngss.atlas.auth;
+
+import io.ngss.atlas.auth.dto.AuthResponse;
+import io.ngss.atlas.auth.dto.LoginRequest;
+import io.ngss.atlas.auth.dto.NotImplementedResponse;
+import io.ngss.atlas.auth.dto.RefreshRequest;
+import io.ngss.atlas.auth.dto.RegisterRequest;
+import io.ngss.atlas.auth.dto.UserProfileResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * T-009 scaffold. Every endpoint returns HTTP 501 with a stable JSON body.
+ * The real DTOs are declared on the request/response signatures so the
+ * OpenAPI document is final from day one — T-010 generates the frontend
+ * TS client against this contract; T-011/T-012 implement the bodies.
+ */
+@RestController
+@RequestMapping("/api/auth")
+@Tag(name = "auth")
+public class AuthController {
+
+  private static final NotImplementedResponse STUB =
+      new NotImplementedResponse("NOT_IMPLEMENTED", "Endpoint not yet implemented (T-011/T-012)");
+
+  @PostMapping("/register")
+  @Operation(summary = "Register a new user account")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Successful registration (T-011)",
+        content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+    @ApiResponse(
+        responseCode = "501",
+        description = "Stub — not yet implemented",
+        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+  })
+  public ResponseEntity<NotImplementedResponse> register(@Valid @RequestBody RegisterRequest req) {
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  }
+
+  @PostMapping("/login")
+  @Operation(summary = "Authenticate with email + password and receive token pair")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Successful login (T-011)",
+        content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+    @ApiResponse(
+        responseCode = "501",
+        description = "Stub — not yet implemented",
+        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+  })
+  public ResponseEntity<NotImplementedResponse> login(@Valid @RequestBody LoginRequest req) {
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  }
+
+  @PostMapping("/refresh")
+  @Operation(summary = "Exchange a refresh token for a fresh access + refresh pair")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Successful refresh (T-012)",
+        content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+    @ApiResponse(
+        responseCode = "501",
+        description = "Stub — not yet implemented",
+        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+  })
+  public ResponseEntity<NotImplementedResponse> refresh(@Valid @RequestBody RefreshRequest req) {
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  }
+
+  @PostMapping("/logout")
+  @SecurityRequirement(name = "bearerAuth")
+  @Operation(summary = "Revoke the caller's refresh token")
+  @ApiResponses({
+    @ApiResponse(responseCode = "204", description = "Successful logout (T-012)"),
+    @ApiResponse(
+        responseCode = "501",
+        description = "Stub — not yet implemented",
+        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+  })
+  public ResponseEntity<NotImplementedResponse> logout() {
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  }
+
+  @GetMapping("/me")
+  @SecurityRequirement(name = "bearerAuth")
+  @Operation(summary = "Return the authenticated user's profile")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Profile retrieved (T-011)",
+        content = @Content(schema = @Schema(implementation = UserProfileResponse.class))),
+    @ApiResponse(
+        responseCode = "501",
+        description = "Stub — not yet implemented",
+        content = @Content(schema = @Schema(implementation = NotImplementedResponse.class)))
+  })
+  public ResponseEntity<NotImplementedResponse> me() {
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(STUB);
+  }
+}
