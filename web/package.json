@@ -6,7 +6,8 @@
   "description": "Atlas web frontend (Vite + React 19.2 + TypeScript 6 + Tailwind 4.3 + shadcn/ui).",
   "scripts": {
     "dev": "vite",
-    "codegen": "openapi --input ../api/src/main/resources/openapi/openapi.json --output ./src/api/generated --client fetch",
+    "precodegen": "node scripts/copy-spec.mjs",
+    "codegen": "openapi --input ./openapi.json --output ./src/api/generated --client fetch",
     "prebuild": "npm run codegen",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4173 --strictPort",
