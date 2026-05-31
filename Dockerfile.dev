@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.4
+#
+# Atlas — DEVELOPMENT container image.
+# NOT FOR PRODUCTION USE.
+#
+# This image runs `mvn spring-boot:run` against the source tree so the
+# inner-loop "rebuild & rerun" cycle is fast. It deliberately:
+#   * skips Spring AOT bean-definition processing
+#   * skips the AppCDS shared-class archive warm-up
+#   * skips the multi-stage layer cache optimization
+#   * runs as root (Maven daemon writes into /root/.m2)
+#   * carries the full Maven + JDK toolchain in the image
+#
+# The production image is /Dockerfile. Build that for any environment
+# beyond a local developer's machine. CI never builds this file.
+#
+# Usage:
+#   docker build -f Dockerfile.dev -t atlas:dev .
+#   docker run --rm -p 8080:8080 \
+#     -e APP_DATABASE_URL=jdbc:postgresql://host.docker.internal:5432/atlas \
+#     -e APP_DATABASE_USERNAME=atlas -e APP_DATABASE_PASSWORD=atlas \
+#     atlas:dev
+
+FROM maven:3.9-eclipse-temurin-21
+WORKDIR /api
+COPY api/ ./
+EXPOSE 8080
+ENTRYPOINT ["mvn","-B","-ntp","spring-boot:run"]

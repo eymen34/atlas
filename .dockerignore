@@ -1,0 +1,49 @@
+# Keep the Docker build context small. Anything not listed here is
+# shipped to the daemon every time `docker build` runs.
+
+# Build outputs
+target/
+**/target/
+web/dist/
+**/dist/
+**/coverage/
+**/build/
+
+# Local dependency caches and lockfile artifacts the build re-creates
+**/node_modules/
+
+# Git metadata
+.git/
+.gitignore
+.gitattributes
+
+# IDE / editor / OS noise
+**/.idea/
+**/.vscode/
+**/*.iml
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.bak
+
+# Logs and runtime debris
+**/*.log
+**/atlas-audit-trail/
+**/hs_err_pid*.log
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Repo docs / CI / deploy manifests — not needed at build time
+.github/
+docs/
+deploy/
+README.md
+CONTRIBUTING.md
+
+# Dockerfiles themselves (no recursive build context)
+Dockerfile
+Dockerfile.dev
+.dockerignore
+
+# Memory + Claude artifacts
+memory/
+.claude/

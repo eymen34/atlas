@@ -17,11 +17,17 @@ spring:
     name: atlas-api
   jpa:
     open-in-view: false
-    # Explicit dialect so Hibernate does not need to introspect JDBC metadata
-    # at boot. Required because hibernate.boot.allow_jdbc_metadata_access is
-    # set to false below (cold-start optimization). Without an explicit
-    # dialect, EntityManagerFactory creation fails with
-    # "Unable to determine Dialect without JDBC metadata".
+    # PAIR-RULE (hibernate_cold_start): the two keys below
+    #   * spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+    #   * spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false
+    # MUST be set together. The metadata-access flag is a cold-start
+    # optimization (saves ~200ms by skipping JDBC metadata introspection on
+    # EntityManagerFactory creation); the explicit dialect is what allows
+    # Hibernate to build the dialect WITHOUT that introspection. Removing
+    # either half re-introduces the "Unable to determine Dialect without
+    # JDBC metadata" boot failure. Stage 3 of /Dockerfile boots the JVM
+    # without a reachable database to warm an AppCDS archive and depends on
+    # BOTH halves being present.
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: none
@@ -77,3 +83,11 @@ app:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/atlas}
     username: ${DATABASE_USERNAME:atlas}
     password: ${DATABASE_PASSWORD:}
+    startup-check:
+      # Toggle for the SmartLifecycle DB ping performed during context
+      # refresh by DatabaseStartupValidator. Default true; ONLY set false
+      # in stage 3 of /Dockerfile (AppCDS archive warm-up). Setting this
+      # false in any deployment environment silently disables the
+      # fail-fast contract. Exposed via /actuator/info
+      # (databaseStartupCheck.enabled) for runtime visibility.
+      enabled: true

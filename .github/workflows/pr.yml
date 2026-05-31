@@ -72,3 +72,106 @@ jobs:
 
       - name: npm audit (HIGH/CRITICAL block)
         run: npm audit --omit=dev --audit-level=high
+
+  docker-build:
+    name: Docker build (production image, no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --progress=plain \
+            -t atlas:ci-test \
+            .
+
+      - name: Assert image size <= 350 MiB
+        run: |
+          set -euo pipefail
+          MAX=367001600
+          SIZE="$(docker image inspect atlas:ci-test --format '{{.Size}}')"
+          echo "image size: ${SIZE} bytes (max ${MAX})"
+          if [ "${SIZE}" -gt "${MAX}" ]; then
+            echo "::error::atlas:ci-test image exceeds 350 MiB budget (${SIZE} > ${MAX})"
+            exit 1
+          fi
+
+      - name: Assert AppCDS archive layer is present and non-trivial
+        run: |
+          set -euo pipefail
+          # docker history surfaces the COPY directive that landed app.jsa.
+          HISTORY="$(docker history atlas:ci-test --no-trunc --format '{{.Size}}\t{{.CreatedBy}}')"
+          echo "${HISTORY}"
+          LINE="$(echo "${HISTORY}" | grep 'app\.jsa' | head -n1 || true)"
+          if [ -z "${LINE}" ]; then
+            echo "::error::no docker history layer references app.jsa — AppCDS archive missing"
+            exit 1
+          fi
+          LAYER_SIZE_HUMAN="$(echo "${LINE}" | awk -F '\t' '{print $1}')"
+          echo "app.jsa layer size (reported): ${LAYER_SIZE_HUMAN}"
+          # Extract the actual archive byte size from inside the image.
+          CID="$(docker create atlas:ci-test)"
+          trap 'docker rm -f "${CID}" >/dev/null 2>&1 || true' EXIT
+          BYTES="$(docker cp "${CID}:/app/app.jsa" - | wc -c)"
+          echo "/app/app.jsa byte count (in image): ${BYTES}"
+          if [ "${BYTES}" -le 1024 ]; then
+            echo "::error::/app/app.jsa is suspiciously small (${BYTES} bytes <= 1024)"
+            exit 1
+          fi
+
+      - name: Assert no docker push / login in this workflow
+        run: |
+          set -euo pipefail
+          # Defense-in-depth: the docker-build job must never publish.
+          # Regex character-classes (e.g. [/]) keep the patterns from
+          # matching themselves when grepped against this very file.
+          if grep -nE '(docker[[:space:]]+push|docker[[:space:]]+login|docker[/]login-action)' \
+              .github/workflows/pr.yml; then
+            echo "::error::pr.yml contains a docker push / login directive"
+            exit 1
+          fi
+
+      - name: Assert no DB credentials baked into final image ENV
+        run: |
+          set -euo pipefail
+          ENVS="$(docker inspect atlas:ci-test --format '{{range .Config.Env}}{{println .}}{{end}}')"
+          echo "${ENVS}"
+          if echo "${ENVS}" | grep -E '^(APP_DATABASE_PASSWORD|APP_DATABASE_USERNAME|APP_DATABASE_URL)='; then
+            echo "::error::DB env vars must NOT be baked into the production image"
+            exit 1
+          fi
+
+      - name: Assert container runs as non-root (uid 1000)
+        run: |
+          set -euo pipefail
+          UID_OUT="$(docker run --rm --entrypoint id atlas:ci-test -u)"
+          echo "container uid: ${UID_OUT}"
+          if [ "${UID_OUT}" != "1000" ]; then
+            echo "::error::container uid is ${UID_OUT}; expected 1000"
+            exit 1
+          fi
+
+  pr-gate:
+    name: PR gate
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, docker-build]
+    if: always()
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          if [ "${{ needs.backend.result }}" != "success" ] \
+              || [ "${{ needs.frontend.result }}" != "success" ] \
+              || [ "${{ needs.docker-build.result }}" != "success" ]; then
+            echo "::error::one or more required PR jobs failed"
+            echo "backend=${{ needs.backend.result }}"
+            echo "frontend=${{ needs.frontend.result }}"
+            echo "docker-build=${{ needs.docker-build.result }}"
+            exit 1
+          fi

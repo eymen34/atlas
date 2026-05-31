@@ -1,8 +1,10 @@
 package io.ngss.atlas.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -11,6 +13,7 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContextException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DatabaseStartupValidatorTest {
 
@@ -92,5 +95,51 @@ class DatabaseStartupValidatorTest {
     String sanitized =
         DatabaseStartupValidator.sanitizeUrl("jdbc:postgresql://localhost:5432/atlas");
     assertThat(sanitized).contains("localhost:5432/atlas");
+  }
+
+  @Test
+  void start_invokesDataSourceWhenEnabled() throws SQLException {
+    DataSource ds = mock(DataSource.class);
+    Connection conn = mock(Connection.class);
+    when(ds.getConnection()).thenReturn(conn);
+    when(conn.isValid(2)).thenReturn(true);
+    DatabaseProperties props = new DatabaseProperties();
+    props.setUrl("jdbc:postgresql://localhost:5432/atlas");
+    DatabaseStartupValidator validator = new DatabaseStartupValidator(ds, props);
+    ReflectionTestUtils.setField(validator, "startupCheckEnabled", true);
+
+    validator.start();
+
+    verify(ds).getConnection();
+    verify(conn).isValid(2);
+    assertThat(validator.isRunning()).isTrue();
+  }
+
+  @Test
+  void start_skipsDataSourceWhenDisabled() {
+    DataSource ds = mock(DataSource.class);
+    DatabaseProperties props = new DatabaseProperties();
+    props.setUrl("jdbc:postgresql://cds-build-placeholder:5432/atlas");
+    DatabaseStartupValidator validator = new DatabaseStartupValidator(ds, props);
+    ReflectionTestUtils.setField(validator, "startupCheckEnabled", false);
+
+    assertThatCode(validator::start).doesNotThrowAnyException();
+
+    verifyNoInteractions(ds);
+    assertThat(validator.isRunning()).isTrue();
+  }
+
+  @Test
+  void isStartupCheckEnabled_reflectsField() {
+    DataSource ds = mock(DataSource.class);
+    DatabaseProperties props = new DatabaseProperties();
+    props.setUrl("jdbc:postgresql://localhost:5432/atlas");
+    DatabaseStartupValidator validator = new DatabaseStartupValidator(ds, props);
+
+    ReflectionTestUtils.setField(validator, "startupCheckEnabled", true);
+    assertThat(validator.isStartupCheckEnabled()).isTrue();
+
+    ReflectionTestUtils.setField(validator, "startupCheckEnabled", false);
+    assertThat(validator.isStartupCheckEnabled()).isFalse();
   }
 }
