@@ -31,46 +31,58 @@
                 }
               }
             },
-            "description" : "Successful login (T-011)"
+            "description" : "Authenticated"
           },
-          "501" : {
+          "400" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                  "$ref" : "#/components/schemas/AuthResponse"
                 }
               }
             },
-            "description" : "Stub — not yet implemented"
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Invalid credentials"
           }
         },
-        "summary" : "Authenticate with email + password and receive token pair",
+        "summary" : "Authenticate with email + password and receive a token pair",
         "tags" : [ "auth" ]
       }
     },
     "/api/auth/logout" : {
       "post" : {
         "operationId" : "logout",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LogoutRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "204" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
-                }
-              }
-            },
-            "description" : "Successful logout (T-012)"
+            "description" : "Logged out"
           },
-          "501" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
-                }
-              }
-            },
-            "description" : "Stub — not yet implemented"
+          "400" : {
+            "description" : "Validation error"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Refresh token belongs to another user"
           }
         },
         "security" : [ {
@@ -92,17 +104,17 @@
                 }
               }
             },
-            "description" : "Profile retrieved (T-011)"
+            "description" : "Profile retrieved"
           },
-          "501" : {
+          "401" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                  "$ref" : "#/components/schemas/UserProfileResponse"
                 }
               }
             },
-            "description" : "Stub — not yet implemented"
+            "description" : "Missing or invalid access token"
           }
         },
         "security" : [ {
@@ -134,17 +146,27 @@
                 }
               }
             },
-            "description" : "Successful refresh (T-012)"
+            "description" : "Rotated"
           },
-          "501" : {
+          "400" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/NotImplementedResponse"
+                  "$ref" : "#/components/schemas/AuthResponse"
                 }
               }
             },
-            "description" : "Stub — not yet implemented"
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Invalid or expired refresh token"
           }
         },
         "summary" : "Exchange a refresh token for a fresh access + refresh pair",
@@ -272,16 +294,14 @@
         },
         "required" : [ "email", "password" ]
       },
-      "NotImplementedResponse" : {
+      "LogoutRequest" : {
         "type" : "object",
         "properties" : {
-          "error" : {
-            "type" : "string"
-          },
-          "message" : {
+          "refreshToken" : {
             "type" : "string"
           }
-        }
+        },
+        "required" : [ "refreshToken" ]
       },
       "RefreshRequest" : {
         "type" : "object",
@@ -318,6 +338,9 @@
           "createdAt" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "displayName" : {
+            "type" : "string"
           },
           "email" : {
             "type" : "string"

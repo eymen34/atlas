@@ -114,16 +114,16 @@ class SecurityIT {
   // ── AC-4.1 / AC-4.2: stub auth endpoints + auth requirement ───────────
 
   @Test
-  void loginReturns501Unauthenticated() {
+  void loginUnknownUserReturns401() {
+    // T-012 made login real. Unknown user on an empty DB → 401 (generic).
     given()
         .contentType("application/json")
-        .body("{\"email\":\"a@b.com\",\"password\":\"password123\"}")
+        .body("{\"email\":\"nobody@example.com\",\"password\":\"password123\"}")
         .when()
         .post("/api/auth/login")
         .then()
-        .statusCode(501)
-        .contentType("application/json")
-        .body("error", equalTo("NOT_IMPLEMENTED"));
+        .statusCode(401)
+        .contentType("application/json");
   }
 
   @Test
@@ -144,14 +144,15 @@ class SecurityIT {
   }
 
   @Test
-  void refreshReturns501Unauthenticated() {
+  void refreshInvalidTokenReturns401() {
+    // T-012 made refresh real. An unknown/garbage refresh token → 401.
     given()
         .contentType("application/json")
         .body("{\"refreshToken\":\"abc\"}")
         .when()
         .post("/api/auth/refresh")
         .then()
-        .statusCode(501)
+        .statusCode(401)
         .contentType("application/json");
   }
 

@@ -86,7 +86,10 @@ class OpenApiDocsIT {
     assertThat(schemas.has("RefreshRequest")).as("RefreshRequest schema").isTrue();
     assertThat(schemas.has("AuthResponse")).as("AuthResponse schema").isTrue();
     assertThat(schemas.has("UserProfileResponse")).as("UserProfileResponse schema").isTrue();
-    assertThat(schemas.has("NotImplementedResponse")).as("NotImplementedResponse schema").isTrue();
+    // T-012 replaced the 501 stubs: NotImplementedResponse is gone; LogoutRequest
+    // and UserRegisteredResponse are now part of the contract.
+    assertThat(schemas.has("UserRegisteredResponse")).as("UserRegisteredResponse schema").isTrue();
+    assertThat(schemas.has("LogoutRequest")).as("LogoutRequest schema").isTrue();
   }
 
   @Test
