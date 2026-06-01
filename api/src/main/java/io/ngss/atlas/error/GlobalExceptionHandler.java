@@ -1,5 +1,7 @@
 package io.ngss.atlas.error;
 
+import io.ngss.atlas.auth.ForbiddenTokenAccessException;
+import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Locale;
@@ -59,6 +61,23 @@ public class GlobalExceptionHandler {
         request.getRequestURI(),
         ex.getClass().getSimpleName());
     return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", request);
+  }
+
+  @ExceptionHandler(InvalidCredentialsException.class)
+  public ResponseEntity<ErrorBody> handleInvalidCredentials(
+      InvalidCredentialsException ex, HttpServletRequest request) {
+    // Uniform 401 for unknown-email AND wrong-password (anti-enumeration): the
+    // body is byte-for-byte identical because the message is always "Invalid
+    // credentials" and the path is the same.
+    log.info("authentication failure path={}", request.getRequestURI());
+    return build(HttpStatus.UNAUTHORIZED, "Invalid credentials", request);
+  }
+
+  @ExceptionHandler(ForbiddenTokenAccessException.class)
+  public ResponseEntity<ErrorBody> handleForbiddenTokenAccess(
+      ForbiddenTokenAccessException ex, HttpServletRequest request) {
+    log.info("forbidden token access path={}", request.getRequestURI());
+    return build(HttpStatus.FORBIDDEN, "Forbidden", request);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
