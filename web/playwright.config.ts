@@ -1,9 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Smoke suite runs against the Vite preview server (npm run preview on :4173)
-// so we exercise the built bundle, not the dev server. CI starts the preview
-// via the webServer config; locally, run `npm run build && npm run preview`
-// then `npm run e2e`.
+// Two projects (architecture: playwright_architecture):
+//   * smoke              — built bundle on the Vite preview :4173, NO backend.
+//                          Run by `npm run e2e` (= --project=smoke) and CI.
+//   * auth-real-backend  — full register→login→reload→logout against a real
+//                          compose stack at E2E_BASE_URL. LOCAL ONLY via
+//                          `npm run e2e:auth`; NOT wired to CI (deferred T-038).
+//
+// `npm run e2e` scopes to --project=smoke so auth.spec.ts never runs in CI.
+// The preview webServer is skipped when E2E_BASE_URL is set (auth mode targets
+// an external stack, not the preview).
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -13,14 +19,29 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
-    baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    command: 'npm run preview',
-    url: 'http://localhost:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  projects: [
+    {
+      name: 'smoke',
+      testMatch: /smoke\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://localhost:4173' },
+    },
+    {
+      name: 'auth-real-backend',
+      testMatch: /auth\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+      },
+    },
+  ],
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run preview',
+        url: 'http://localhost:4173',
+        reuseExistingServer: !process.env.CI,
+        timeout: 60_000,
+      },
 });

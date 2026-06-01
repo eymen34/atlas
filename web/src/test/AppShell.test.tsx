@@ -42,4 +42,10 @@ describe('AC-3.2 AppShell renders a shadcn Button in the header', () => {
     renderShell();
     expect(screen.getByText('Login Stub')).toBeInTheDocument();
   });
+
+  it('exposes a logout button and a topbar user slot (T-013)', () => {
+    renderShell();
+    expect(screen.getByTestId('logout-button')).toBeInTheDocument();
+    expect(screen.getByTestId('topbar-user')).toBeInTheDocument();
+  });
 });

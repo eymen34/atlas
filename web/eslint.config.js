@@ -48,6 +48,21 @@ export default tseslint.config(
     },
   },
   {
+    // env_var_convention: the frontend MUST use import.meta.env VITE_* vars,
+    // never the backend's APP_* (or process.env) convention.
+    files: ['src/**/*.{ts,tsx}', 'e2e/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[object.object.name='process'][object.property.name='env'][property.name=/^APP_/]",
+          message: 'Frontend must use import.meta.env VITE_* vars, never APP_* (env_var_convention).',
+        },
+      ],
+    },
+  },
+  {
     // shadcn-owned UI files legitimately re-export variant builders (cva)
     // alongside the component. Fast refresh is unaffected because consumers
     // of these primitives re-export only components.
