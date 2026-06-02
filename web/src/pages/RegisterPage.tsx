@@ -1,41 +1,35 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router';
-import { toast } from 'sonner';
-import { loginSchema, type LoginInput } from '@/auth/schemas';
-import { ApiHttpError, useLogin } from '@/auth/useAuthMutations';
+import { registerSchema, type RegisterInput } from '@/auth/schemas';
+import { ApiHttpError, useRegister } from '@/auth/useAuthMutations';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export function LoginPage() {
-  const login = useLogin();
+export function RegisterPage() {
+  const registerMutation = useRegister();
   const {
     register,
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+  } = useForm<RegisterInput>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { email: '', password: '', displayName: '' },
   });
 
-  useEffect(() => {
-    if (sessionStorage.getItem('atlas.justRegistered')) {
-      sessionStorage.removeItem('atlas.justRegistered');
-      toast.success('Account created — please sign in');
-    }
-  }, []);
-
   const onSubmit = handleSubmit((values) => {
-    login.mutate(values, {
+    registerMutation.mutate(values, {
       onError: (err) => {
-        // Non-enumerating: the raw backend message is NEVER surfaced.
         const status = err instanceof ApiHttpError ? err.status : 0;
-        if (status === 401) {
-          setError('root', { message: 'Invalid email or password' });
+        if (status === 409) {
+          // Field-level, co-located with the email input — never a root error.
+          setError('email', {
+            type: 'server',
+            message: 'An account with this email already exists',
+          });
         } else if (status === 400) {
           setError('root', { message: 'Please check your details and try again.' });
         } else {
@@ -49,7 +43,7 @@ export function LoginPage() {
     <div className="mx-auto mt-16 max-w-md px-4">
       <Card>
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
+          <CardTitle>Create your account</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
@@ -69,11 +63,26 @@ export function LoginPage() {
               )}
             </div>
             <div className="space-y-1">
+              <Label htmlFor="displayName">Display name</Label>
+              <Input
+                id="displayName"
+                type="text"
+                autoComplete="name"
+                aria-invalid={errors.displayName ? 'true' : undefined}
+                {...register('displayName')}
+              />
+              {errors.displayName && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.displayName.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 aria-invalid={errors.password ? 'true' : undefined}
                 {...register('password')}
               />
@@ -88,14 +97,18 @@ export function LoginPage() {
                 {errors.root.message}
               </p>
             )}
-            <Button type="submit" className="w-full" disabled={isSubmitting || login.isPending}>
-              Sign in
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting || registerMutation.isPending}
+            >
+              Create account
             </Button>
           </form>
           <p className="mt-4 text-sm text-muted-foreground">
-            No account?{' '}
-            <Link to="/register" className="underline">
-              Create one
+            Already have an account?{' '}
+            <Link to="/login" className="underline">
+              Sign in
             </Link>
           </p>
         </CardContent>
