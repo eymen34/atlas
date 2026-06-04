@@ -3,6 +3,9 @@ package io.ngss.atlas.error;
 import io.ngss.atlas.auth.ForbiddenTokenAccessException;
 import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
+import io.ngss.atlas.project.DuplicateProjectKeyException;
+import io.ngss.atlas.project.ProjectNotFoundException;
+import io.ngss.atlas.project.ProjectValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -15,6 +18,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * Controller-advice error mapping for the REST API. Emits a stable JSON body
@@ -78,6 +82,39 @@ public class GlobalExceptionHandler {
       ForbiddenTokenAccessException ex, HttpServletRequest request) {
     log.info("forbidden token access path={}", request.getRequestURI());
     return build(HttpStatus.FORBIDDEN, "Forbidden", request);
+  }
+
+  @ExceptionHandler(ProjectNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleProjectNotFound(
+      ProjectNotFoundException ex, HttpServletRequest request) {
+    // Raised for genuinely-missing AND non-creator access — message is uniform
+    // ("Project not found") so a 404 never reveals whether the project exists.
+    log.info("project not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Project not found", request);
+  }
+
+  @ExceptionHandler(DuplicateProjectKeyException.class)
+  public ResponseEntity<ErrorBody> handleDuplicateProjectKey(
+      DuplicateProjectKeyException ex, HttpServletRequest request) {
+    log.info("project key conflict path={}", request.getRequestURI());
+    return build(HttpStatus.CONFLICT, "Project key already in use", request);
+  }
+
+  @ExceptionHandler(ProjectValidationException.class)
+  public ResponseEntity<ErrorBody> handleProjectValidation(
+      ProjectValidationException ex, HttpServletRequest request) {
+    log.info("project validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ErrorBody> handleTypeMismatch(
+      MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+    // e.g. a non-UUID {id} path segment on PATCH/DELETE /api/projects/{id}.
+    // Map to 400 (not the default 500) with the canonical error body. Never echo
+    // the rejected value — only the parameter name.
+    log.info("path-variable type mismatch path={} param={}", request.getRequestURI(), ex.getName());
+    return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter: " + ex.getName(), request);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -12,6 +12,7 @@ import io.ngss.atlas.domain.PasswordCredentialRepository;
 import io.ngss.atlas.domain.RegistrationService;
 import io.ngss.atlas.domain.User;
 import io.ngss.atlas.domain.UserRepository;
+import io.ngss.atlas.security.CurrentUser;
 import io.ngss.atlas.security.JwtIssuer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -26,8 +27,6 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -172,18 +171,16 @@ public class AuthController {
   }
 
   /**
-   * Reads the authenticated user id from the SecurityContext. JwtAuthenticationFilter
-   * sets the principal to the raw UUID string (the JWT subject). A missing or
-   * non-UUID principal yields 401 (InvalidCredentialsException).
+   * Reads the authenticated user id from the SecurityContext via the shared
+   * {@link CurrentUser} helper. A missing or non-UUID principal yields 401
+   * (InvalidCredentialsException) — the helper's IllegalState/IllegalArgument
+   * exceptions are translated here so the auth endpoints keep their exact
+   * pre-T-014 contract.
    */
   private static UUID currentUserId() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth == null || auth.getPrincipal() == null) {
-      throw new InvalidCredentialsException();
-    }
     try {
-      return UUID.fromString(auth.getPrincipal().toString());
-    } catch (IllegalArgumentException e) {
+      return CurrentUser.id();
+    } catch (IllegalStateException | IllegalArgumentException e) {
       throw new InvalidCredentialsException();
     }
   }

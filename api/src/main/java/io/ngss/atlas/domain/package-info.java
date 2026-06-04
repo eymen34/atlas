@@ -1,6 +1,6 @@
-// Domain layer. As of T-011 this package holds the project's FIRST JPA
-// entities (User, PasswordCredential), their Spring Data repositories, the
-// EmailAlreadyRegisteredException, and RegistrationService.
+// Domain layer. Holds the project's JPA entities (User, PasswordCredential —
+// T-011; RefreshToken — T-012; Project — T-014), their Spring Data
+// repositories, the EmailAlreadyRegisteredException, and RegistrationService.
 //
 // APPCDS COLD-START HARD RULE (N6 / appcds_boot_safety): every @Entity here is
 // initialized by the EntityManagerFactory during the Dockerfile stage-3 no-DB
