@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -40,6 +41,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  */
 @Configuration
 @EnableWebSecurity
+// T-015: enables @PreAuthorize/@PostAuthorize support project-wide. No method
+// is annotated yet (project authz is enforced imperatively via ProjectAccessGuard);
+// present so future capability annotations work without a config change. Annotation
+// only — adds no bean that touches a DB at refresh, so AppCDS stage-3 is unaffected.
+@EnableMethodSecurity
 @SecurityScheme(
     name = "bearerAuth",
     type = SecuritySchemeType.HTTP,

@@ -28,10 +28,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Project CRUD endpoints (T-014). Every route is authenticated by the existing
- * {@code /api/**} security rule; authorization is creator-only and enforced in
- * {@link ProjectService}. Non-creator access to an existing project returns 404
- * (not 403) to avoid existence leakage.
+ * Project CRUD endpoints (T-014; authorization widened to membership in T-015).
+ * Every route is authenticated by the existing {@code /api/**} security rule;
+ * authorization is enforced in {@link ProjectService} via ProjectAccessGuard.
+ * Non-members get 404 (existence-leak prevention); members lacking ADMIN get 403
+ * on PATCH/DELETE.
  *
  * <p>Class-level {@code produces=application/json} keeps springdoc content types
  * concrete; body routes (POST/PATCH) add {@code consumes=application/json}.
@@ -84,22 +85,22 @@ public class ProjectController {
       summary = "Fetch a single project by UUID id or key",
       description =
           "Resolves the path segment as a UUID first; on failure it is treated as a project key. "
-              + "Returns 404 if no live project the caller owns matches.")
+              + "Returns 404 if no live project the caller is a member of matches.")
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",
         description = "Project found",
         content = @Content(schema = @Schema(implementation = ProjectResponse.class))),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
-    @ApiResponse(responseCode = "404", description = "Project not found")
+    @ApiResponse(responseCode = "404", description = "Project not found or caller is not a member")
   })
   public ResponseEntity<ProjectResponse> get(@PathVariable String idOrKey) {
-    return ResponseEntity.ok(projectService.getByIdOrKeyForCaller(idOrKey, CurrentUser.id()));
+    return ResponseEntity.ok(projectService.getByIdOrKeyForCaller(idOrKey));
   }
 
   @PatchMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
   @Operation(
-      summary = "Partially update a project the caller created",
+      summary = "Partially update a project (ADMIN only)",
       description =
           "Null/absent fields are left unchanged; an explicit empty-string description clears it. "
               + "A present but blank name is a 400. updatedAt always advances; createdAt is never "
@@ -111,22 +112,24 @@ public class ProjectController {
         content = @Content(schema = @Schema(implementation = ProjectResponse.class))),
     @ApiResponse(responseCode = "400", description = "Validation error"),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
-    @ApiResponse(responseCode = "404", description = "Project not found")
+    @ApiResponse(responseCode = "403", description = "Caller is a member but not an ADMIN"),
+    @ApiResponse(responseCode = "404", description = "Project not found or caller is not a member")
   })
   public ResponseEntity<ProjectResponse> update(
       @PathVariable UUID id, @Valid @RequestBody UpdateProjectRequest req) {
-    return ResponseEntity.ok(projectService.update(id, req, CurrentUser.id()));
+    return ResponseEntity.ok(projectService.update(id, req));
   }
 
   @DeleteMapping("/{id}")
-  @Operation(summary = "Soft-delete a project the caller created")
+  @Operation(summary = "Soft-delete a project (ADMIN only)")
   @ApiResponses({
     @ApiResponse(responseCode = "204", description = "Project soft-deleted"),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
-    @ApiResponse(responseCode = "404", description = "Project not found")
+    @ApiResponse(responseCode = "403", description = "Caller is a member but not an ADMIN"),
+    @ApiResponse(responseCode = "404", description = "Project not found or caller is not a member")
   })
   public ResponseEntity<Void> delete(@PathVariable UUID id) {
-    projectService.softDelete(id, CurrentUser.id());
+    projectService.softDelete(id);
     return ResponseEntity.noContent().build();
   }
 }

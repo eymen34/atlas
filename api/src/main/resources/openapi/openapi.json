@@ -322,7 +322,7 @@
     },
     "/api/projects/{idOrKey}" : {
       "get" : {
-        "description" : "Resolves the path segment as a UUID first; on failure it is treated as a project key. Returns 404 if no live project the caller owns matches.",
+        "description" : "Resolves the path segment as a UUID first; on failure it is treated as a project key. Returns 404 if no live project the caller is a member of matches.",
         "operationId" : "get",
         "parameters" : [ {
           "in" : "path",
@@ -361,7 +361,7 @@
                 }
               }
             },
-            "description" : "Project not found"
+            "description" : "Project not found or caller is not a member"
           }
         },
         "security" : [ {
@@ -390,14 +390,17 @@
           "401" : {
             "description" : "Missing or invalid access token"
           },
+          "403" : {
+            "description" : "Caller is a member but not an ADMIN"
+          },
           "404" : {
-            "description" : "Project not found"
+            "description" : "Project not found or caller is not a member"
           }
         },
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Soft-delete a project the caller created",
+        "summary" : "Soft-delete a project (ADMIN only)",
         "tags" : [ "projects" ]
       },
       "patch" : {
@@ -453,6 +456,16 @@
             },
             "description" : "Missing or invalid access token"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description" : "Caller is a member but not an ADMIN"
+          },
           "404" : {
             "content" : {
               "application/json" : {
@@ -461,14 +474,294 @@
                 }
               }
             },
-            "description" : "Project not found"
+            "description" : "Project not found or caller is not a member"
           }
         },
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Partially update a project the caller created",
+        "summary" : "Partially update a project (ADMIN only)",
         "tags" : [ "projects" ]
+      }
+    },
+    "/api/projects/{id}/members" : {
+      "get" : {
+        "operationId" : "list_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/MemberResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Members listed"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/MemberResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/MemberResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List the members of a project (any member may view)",
+        "tags" : [ "project-members" ]
+      },
+      "post" : {
+        "operationId" : "add",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AddMemberRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Member added"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Caller is a member but not an ADMIN"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Project/caller-membership/email not found"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "User is already a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Add a registered user to the project (ADMIN only)",
+        "tags" : [ "project-members" ]
+      }
+    },
+    "/api/projects/{id}/members/{userId}" : {
+      "delete" : {
+        "operationId" : "remove",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Member removed"
+          },
+          "400" : {
+            "description" : "Last-admin removal blocked"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Caller is a member but not an ADMIN"
+          },
+          "404" : {
+            "description" : "Project not found or target is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Remove a member from the project (ADMIN only)",
+        "tags" : [ "project-members" ]
+      },
+      "patch" : {
+        "operationId" : "changeRole",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateMemberRoleRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Role updated"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Validation error or last-admin demotion"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Caller is a member but not an ADMIN"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description" : "Project not found or target is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Change a member's role (ADMIN only)",
+        "tags" : [ "project-members" ]
       }
     },
     "/health" : {
@@ -516,6 +809,19 @@
   },
   "components" : {
     "schemas" : {
+      "AddMemberRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "role" : {
+            "type" : "string",
+            "enum" : [ "MEMBER", "ADMIN" ]
+          }
+        },
+        "required" : [ "email", "role" ]
+      },
       "AuthResponse" : {
         "type" : "object",
         "properties" : {
@@ -571,6 +877,33 @@
           }
         },
         "required" : [ "refreshToken" ]
+      },
+      "MemberResponse" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "invitedBy" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "role" : {
+            "type" : "string",
+            "enum" : [ "MEMBER", "ADMIN" ]
+          },
+          "userId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
       },
       "ProjectResponse" : {
         "type" : "object",
@@ -630,6 +963,16 @@
           }
         },
         "required" : [ "displayName", "email", "password" ]
+      },
+      "UpdateMemberRoleRequest" : {
+        "type" : "object",
+        "properties" : {
+          "role" : {
+            "type" : "string",
+            "enum" : [ "MEMBER", "ADMIN" ]
+          }
+        },
+        "required" : [ "role" ]
       },
       "UpdateProjectRequest" : {
         "type" : "object",
