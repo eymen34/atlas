@@ -93,6 +93,39 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t015MemberEndpointsSchemasAndForbiddenResponsesPresent() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    assertThat(paths.path("/api/projects/{id}/members").has("get")).as("members GET").isTrue();
+    assertThat(paths.path("/api/projects/{id}/members").has("post")).as("members POST").isTrue();
+    assertThat(paths.path("/api/projects/{id}/members/{userId}").has("patch"))
+        .as("member PATCH")
+        .isTrue();
+    assertThat(paths.path("/api/projects/{id}/members/{userId}").has("delete"))
+        .as("member DELETE")
+        .isTrue();
+
+    // 403 added to project mutations now that authorization is role-based.
+    assertThat(paths.path("/api/projects/{id}").path("patch").path("responses").has("403")).isTrue();
+    assertThat(paths.path("/api/projects/{id}").path("delete").path("responses").has("403"))
+        .isTrue();
+
+    JsonNode schemas = root.get("components").get("schemas");
+    assertThat(schemas.has("MemberResponse")).as("MemberResponse schema").isTrue();
+    assertThat(schemas.has("AddMemberRequest")).as("AddMemberRequest schema").isTrue();
+    assertThat(schemas.has("UpdateMemberRoleRequest")).as("UpdateMemberRoleRequest schema").isTrue();
+
+    // ProjectRole is emitted as a string enum (springdoc inlines it into the role property).
+    JsonNode roleEnum =
+        schemas.path("AddMemberRequest").path("properties").path("role").path("enum");
+    assertThat(roleEnum.isArray()).as("role is a string enum").isTrue();
+    assertThat(roleEnum.toString()).contains("MEMBER").contains("ADMIN");
+  }
+
+  @Test
   void loginSuccessResponseRefsAuthResponse() throws Exception {
     JsonNode root =
         objectMapper.readTree(

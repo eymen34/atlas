@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
@@ -39,7 +40,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-/** End-to-end Project CRUD coverage (T-014). Two users exercise ownership isolation. */
+/**
+ * End-to-end Project CRUD coverage (T-014; authorization widened to membership in
+ * T-015). Two users exercise the membership model: a non-member sees 404
+ * (existence-leak prevention), a member sees 200 on reads but 403 on admin-only
+ * mutations, and the creator is auto-seeded as the first ADMIN.
+ */
 @SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers(disabledWithoutDocker = true)
 @TestPropertySource(properties = {"BCRYPT_COST=12", "spring.jpa.hibernate.ddl-auto=validate"})
@@ -500,5 +506,70 @@ class ProjectControllerIT {
     String getBody =
         given().header("Authorization", "Bearer " + tokenB).when().get("/api/projects/" + id).asString();
     assertThat(getBody).doesNotContain("Confidential Name").doesNotContain("LEAK");
+  }
+
+  // ───────────────────────── T-015 membership ─────────────────────────
+
+  @Test
+  void create_autoSeedsCreatorAsAdminMember() {
+    String id = createProjectId(tokenA, "SEED", "Seeded");
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .when()
+        .get("/api/projects/" + id + "/members")
+        .then()
+        .statusCode(200)
+        .body("size()", equalTo(1))
+        .body("[0].userId", equalTo(userA.toString()))
+        .body("[0].role", equalTo("ADMIN"))
+        .body("[0].invitedBy", nullValue());
+  }
+
+  @Test
+  void member_seesProjectInListAndById_butCannotMutate() {
+    String id = createProjectId(tokenA, "SHARED", "Shared");
+    // Admin (A) adds B as a MEMBER.
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .contentType(ContentType.JSON)
+        .body("{\"email\":\"userb@example.com\",\"role\":\"MEMBER\"}")
+        .when()
+        .post("/api/projects/" + id + "/members")
+        .then()
+        .statusCode(201);
+
+    // B now sees it in their list and by id (REG-6).
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .when()
+        .get("/api/projects")
+        .then()
+        .statusCode(200)
+        .body("key", hasItem("SHARED"));
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .when()
+        .get("/api/projects/" + id)
+        .then()
+        .statusCode(200)
+        .body("key", equalTo("SHARED"));
+
+    // But B (MEMBER, not ADMIN) cannot mutate the project (REG-9).
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .contentType(ContentType.JSON)
+        .body("{\"name\":\"Renamed by member\"}")
+        .when()
+        .patch("/api/projects/" + id)
+        .then()
+        .statusCode(403)
+        .body("status", equalTo(403));
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .when()
+        .delete("/api/projects/" + id)
+        .then()
+        .statusCode(403)
+        .body("status", equalTo(403));
   }
 }

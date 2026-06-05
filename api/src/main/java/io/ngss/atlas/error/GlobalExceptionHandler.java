@@ -3,9 +3,14 @@ package io.ngss.atlas.error;
 import io.ngss.atlas.auth.ForbiddenTokenAccessException;
 import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
+import io.ngss.atlas.project.DuplicateMemberException;
 import io.ngss.atlas.project.DuplicateProjectKeyException;
+import io.ngss.atlas.project.ForbiddenProjectAccessException;
+import io.ngss.atlas.project.LastAdminException;
+import io.ngss.atlas.project.MemberNotFoundException;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.project.ProjectValidationException;
+import io.ngss.atlas.project.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -105,6 +110,45 @@ public class GlobalExceptionHandler {
       ProjectValidationException ex, HttpServletRequest request) {
     log.info("project validation failure path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(ForbiddenProjectAccessException.class)
+  public ResponseEntity<ErrorBody> handleForbiddenProjectAccess(
+      ForbiddenProjectAccessException ex, HttpServletRequest request) {
+    // Caller IS a member (existence already disclosed) but lacks ADMIN → 403.
+    log.info("forbidden project access path={}", request.getRequestURI());
+    return build(HttpStatus.FORBIDDEN, "Admin role required", request);
+  }
+
+  @ExceptionHandler(MemberNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleMemberNotFound(
+      MemberNotFoundException ex, HttpServletRequest request) {
+    log.info("project member not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Membership not found", request);
+  }
+
+  @ExceptionHandler(UserNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleUserNotFound(
+      UserNotFoundException ex, HttpServletRequest request) {
+    log.info("user not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "User not found", request);
+  }
+
+  @ExceptionHandler(DuplicateMemberException.class)
+  public ResponseEntity<ErrorBody> handleDuplicateMember(
+      DuplicateMemberException ex, HttpServletRequest request) {
+    log.info("duplicate project member path={}", request.getRequestURI());
+    return build(HttpStatus.CONFLICT, "User is already a member of this project", request);
+  }
+
+  @ExceptionHandler(LastAdminException.class)
+  public ResponseEntity<ErrorBody> handleLastAdmin(
+      LastAdminException ex, HttpServletRequest request) {
+    log.info("last-admin guard tripped path={}", request.getRequestURI());
+    return build(
+        HttpStatus.BAD_REQUEST,
+        "Project would have no remaining ADMIN; demotion/removal blocked",
+        request);
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
