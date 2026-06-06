@@ -85,6 +85,7 @@ class ProjectControllerIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
+    jdbc.update("DELETE FROM project_members");
     jdbc.update("DELETE FROM projects");
     jdbc.update("DELETE FROM refresh_tokens");
     jdbc.update("DELETE FROM password_credentials");
