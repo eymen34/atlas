@@ -28,6 +28,10 @@ web/openapi.json
 # TypeScript incremental build artifacts
 *.tsbuildinfo
 
+# Stray create-next-app scaffold, not part of the project. The real frontend
+# lives in web/. Ignored so it never gets committed by accident.
+atlas-web/
+
 # Environment / secrets
 # Do NOT commit .env.example with real credentials — placeholders/comments only.
 .env
