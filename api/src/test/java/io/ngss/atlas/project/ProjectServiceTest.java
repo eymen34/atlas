@@ -63,6 +63,10 @@ class ProjectServiceTest {
     assertThat(seeded.getUserId()).isEqualTo(CALLER);
     assertThat(seeded.getRole()).isEqualTo(ProjectRole.ADMIN);
     assertThat(seeded.getInvitedBy()).isNull();
+
+    // T-016: creator view is ADMIN with a single member, computed without a query.
+    assertThat(resp.callerRole()).isEqualTo(ProjectRole.ADMIN);
+    assertThat(resp.memberCount()).isEqualTo(1L);
   }
 
   @Test
@@ -92,6 +96,9 @@ class ProjectServiceTest {
     Instant t0 = Instant.now().minusSeconds(60);
     Project p = new Project(UUID.randomUUID(), "KEY", "Name", null, CALLER, t0, t0, null);
     when(repository.findByIdAndDeletedAtIsNull(p.getId())).thenReturn(Optional.of(p));
+    when(guard.getRequestCachedMembership(p.getId()))
+        .thenReturn(new ProjectMember(UUID.randomUUID(), p.getId(), CALLER, ProjectRole.ADMIN, null, t0));
+    when(memberRepository.countByProjectId(p.getId())).thenReturn(3L);
 
     Instant before = Instant.now();
     ProjectResponse resp = service.update(p.getId(), new UpdateProjectRequest("NewName", null));
@@ -100,6 +107,8 @@ class ProjectServiceTest {
     assertThat(resp.name()).isEqualTo("NewName");
     assertThat(resp.createdAt()).isEqualTo(t0);
     assertThat(resp.updatedAt()).isAfter(t0).isBetween(before, after);
+    assertThat(resp.callerRole()).isEqualTo(ProjectRole.ADMIN);
+    assertThat(resp.memberCount()).isEqualTo(3L);
     verify(guard).requireAdmin(p.getId());
   }
 
@@ -108,6 +117,9 @@ class ProjectServiceTest {
     Instant t0 = Instant.now().minusSeconds(60);
     Project p = new Project(UUID.randomUUID(), "KEY", "Original", "Desc", CALLER, t0, t0, null);
     when(repository.findByIdAndDeletedAtIsNull(p.getId())).thenReturn(Optional.of(p));
+    when(guard.getRequestCachedMembership(p.getId()))
+        .thenReturn(new ProjectMember(UUID.randomUUID(), p.getId(), CALLER, ProjectRole.ADMIN, null, t0));
+    when(memberRepository.countByProjectId(p.getId())).thenReturn(1L);
 
     ProjectResponse resp = service.update(p.getId(), new UpdateProjectRequest(null, null));
 
@@ -194,10 +206,15 @@ class ProjectServiceTest {
     UUID id = UUID.randomUUID();
     Project p = new Project(id, "KEY", "Name", null, CALLER, Instant.now(), Instant.now(), null);
     when(repository.findByIdAndDeletedAtIsNull(id)).thenReturn(Optional.of(p));
+    when(guard.getRequestCachedMembership(id))
+        .thenReturn(new ProjectMember(UUID.randomUUID(), id, CALLER, ProjectRole.MEMBER, CALLER, Instant.now()));
+    when(memberRepository.countByProjectId(id)).thenReturn(2L);
 
     ProjectResponse resp = service.getByIdOrKeyForCaller(id.toString());
 
     assertThat(resp.id()).isEqualTo(id);
+    assertThat(resp.callerRole()).isEqualTo(ProjectRole.MEMBER);
+    assertThat(resp.memberCount()).isEqualTo(2L);
     verify(guard).requireMember(id);
     verify(repository, never()).findByKeyAndDeletedAtIsNull(any());
   }
@@ -207,10 +224,14 @@ class ProjectServiceTest {
     UUID id = UUID.randomUUID();
     Project p = new Project(id, "MYKEY", "Name", null, CALLER, Instant.now(), Instant.now(), null);
     when(repository.findByKeyAndDeletedAtIsNull("MYKEY")).thenReturn(Optional.of(p));
+    when(guard.getRequestCachedMembership(id))
+        .thenReturn(new ProjectMember(UUID.randomUUID(), id, CALLER, ProjectRole.ADMIN, null, Instant.now()));
+    when(memberRepository.countByProjectId(id)).thenReturn(1L);
 
     ProjectResponse resp = service.getByIdOrKeyForCaller("MYKEY");
 
     assertThat(resp.key()).isEqualTo("MYKEY");
+    assertThat(resp.callerRole()).isEqualTo(ProjectRole.ADMIN);
     verify(guard).requireMember(id);
     verify(repository, never()).findByIdAndDeletedAtIsNull(any());
   }

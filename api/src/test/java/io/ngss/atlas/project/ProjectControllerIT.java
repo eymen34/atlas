@@ -18,11 +18,14 @@ import io.ngss.atlas.Application;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import jakarta.persistence.EntityManagerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +51,13 @@ import org.testcontainers.utility.DockerImageName;
  */
 @SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers(disabledWithoutDocker = true)
-@TestPropertySource(properties = {"BCRYPT_COST=12", "spring.jpa.hibernate.ddl-auto=validate"})
+@TestPropertySource(
+    properties = {
+      "BCRYPT_COST=12",
+      "spring.jpa.hibernate.ddl-auto=validate",
+      // PERF-1: needed by list_issuesExactlyOneQuery_noNPlusOne.
+      "spring.jpa.properties.hibernate.generate_statistics=true"
+    })
 class ProjectControllerIT {
 
   private static final String SECRET = "projectit-secret-min-32-characters-long-okay";
@@ -75,6 +84,7 @@ class ProjectControllerIT {
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
+  @Autowired EntityManagerFactory entityManagerFactory;
 
   private UUID userA;
   private UUID userB;
@@ -167,6 +177,9 @@ class ProjectControllerIT {
             .body("createdBy", equalTo(userA.toString()))
             .body("createdAt", notNullValue())
             .body("updatedAt", notNullValue())
+            // T-016: creator is ADMIN of a one-member project at creation time.
+            .body("callerRole", equalTo("ADMIN"))
+            .body("memberCount", equalTo(1))
             .extract()
             .jsonPath()
             .getString("id");
@@ -572,5 +585,95 @@ class ProjectControllerIT {
         .then()
         .statusCode(403)
         .body("status", equalTo(403));
+  }
+
+  // ───────────────────────── T-016 callerRole + memberCount ─────────────────────────
+
+  @Test
+  void callerRoleAndMemberCount_reflectMembershipForAdminAndMember() {
+    String id = createProjectId(tokenA, "ROLES", "Roles");
+
+    // Solo project: creator sees ADMIN + a single member, on both detail and list.
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .when()
+        .get("/api/projects/" + id)
+        .then()
+        .statusCode(200)
+        .body("callerRole", equalTo("ADMIN"))
+        .body("memberCount", equalTo(1));
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .when()
+        .get("/api/projects")
+        .then()
+        .statusCode(200)
+        .body("find { it.key == 'ROLES' }.callerRole", equalTo("ADMIN"))
+        .body("find { it.key == 'ROLES' }.memberCount", equalTo(1));
+
+    // A adds B as a MEMBER → memberCount becomes 2 for everyone.
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .contentType(ContentType.JSON)
+        .body("{\"email\":\"userb@example.com\",\"role\":\"MEMBER\"}")
+        .when()
+        .post("/api/projects/" + id + "/members")
+        .then()
+        .statusCode(201);
+
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .when()
+        .get("/api/projects/" + id)
+        .then()
+        .statusCode(200)
+        .body("callerRole", equalTo("ADMIN"))
+        .body("memberCount", equalTo(2));
+
+    // B is a MEMBER and sees the same count, on both detail and list.
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .when()
+        .get("/api/projects/" + id)
+        .then()
+        .statusCode(200)
+        .body("callerRole", equalTo("MEMBER"))
+        .body("memberCount", equalTo(2));
+    given()
+        .header("Authorization", "Bearer " + tokenB)
+        .when()
+        .get("/api/projects")
+        .then()
+        .statusCode(200)
+        .body("find { it.key == 'ROLES' }.callerRole", equalTo("MEMBER"))
+        .body("find { it.key == 'ROLES' }.memberCount", equalTo(2));
+  }
+
+  /**
+   * PERF-1 quality gate: the listing must NOT issue per-project queries. The
+   * correlated COUNT is inlined into a single statement and the JWT filter never
+   * touches the DB, so GET /api/projects is exactly one prepared statement
+   * regardless of how many projects the caller owns. An N+1 regression would
+   * surface here as 51 instead of 1.
+   */
+  @Test
+  void list_issuesExactlyOneQuery_noNPlusOne() {
+    Statistics stats = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+    for (int i = 0; i < 50; i++) {
+      createProjectId(tokenA, "PERF" + i, "Perf " + i);
+    }
+
+    stats.clear();
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .when()
+        .get("/api/projects")
+        .then()
+        .statusCode(200)
+        .body("size()", equalTo(50));
+
+    assertThat(stats.getPrepareStatementCount())
+        .as("GET /api/projects must be a single SQL statement (no N+1)")
+        .isEqualTo(1L);
   }
 }

@@ -65,13 +65,15 @@ public class ProjectService {
     // (rolls back the project row if this fails).
     memberRepository.save(
         new ProjectMember(UUID.randomUUID(), project.getId(), callerId, ProjectRole.ADMIN, null, now));
-    return ProjectResponse.from(project);
+    // The creator is the sole member and an ADMIN at creation time.
+    return ProjectResponse.from(project, ProjectRole.ADMIN, 1L);
   }
 
   @Transactional(readOnly = true)
   public List<ProjectResponse> listForCaller(UUID callerId) {
-    return repository.findLiveProjectsForMember(callerId).stream()
-        .map(ProjectResponse::from)
+    // One SQL statement (PERF-1): each row is (Project, ProjectRole, Long count).
+    return repository.findProjectListRowsForMember(callerId).stream()
+        .map(row -> ProjectResponse.from((Project) row[0], (ProjectRole) row[1], asLong(row[2])))
         .toList();
   }
 
@@ -79,7 +81,10 @@ public class ProjectService {
   public ProjectResponse getByIdOrKeyForCaller(String idOrKey) {
     Project project = loadByIdOrKey(idOrKey);
     guard.requireMember(project.getId());
-    return ProjectResponse.from(project);
+    // requireMember populated the per-request cache; read the role without re-querying.
+    ProjectRole callerRole = guard.getRequestCachedMembership(project.getId()).getRole();
+    long memberCount = memberRepository.countByProjectId(project.getId());
+    return ProjectResponse.from(project, callerRole, memberCount);
   }
 
   @Transactional
@@ -95,7 +100,10 @@ public class ProjectService {
     // PATCH always advances updatedAt, even when both fields are null (no-op patch).
     project.rename(newName, newDescription, Instant.now());
     repository.save(project);
-    return ProjectResponse.from(project);
+    // requireAdmin populated the per-request cache; read the role without re-querying.
+    ProjectRole callerRole = guard.getRequestCachedMembership(project.getId()).getRole();
+    long memberCount = memberRepository.countByProjectId(project.getId());
+    return ProjectResponse.from(project, callerRole, memberCount);
   }
 
   @Transactional
@@ -120,5 +128,10 @@ public class ProjectService {
   /** Loads a live project by id, else 404 (tombstoned/absent projects are not mutable). */
   private Project loadLiveProject(UUID id) {
     return repository.findByIdAndDeletedAtIsNull(id).orElseThrow(ProjectNotFoundException::new);
+  }
+
+  /** COUNT(...) comes back from JPQL as {@link Long}; normalize to a primitive. */
+  private static long asLong(Object countColumn) {
+    return ((Number) countColumn).longValue();
   }
 }

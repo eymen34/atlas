@@ -302,6 +302,49 @@ class ProjectMemberControllerIT {
         .body("find { it.role == 'MEMBER' }.userId", equalTo(memberId.toString()));
   }
 
+  // ───────────────────────── T-016 memberCount on project detail ─────────────────────────
+
+  @Test
+  void memberCount_onProjectDetail_tracksAddAndRemove() {
+    // Baseline from setUp: admin + member = 2.
+    given()
+        .header("Authorization", "Bearer " + adminToken)
+        .get("/api/projects/" + projectId)
+        .then()
+        .statusCode(200)
+        .body("callerRole", equalTo("ADMIN"))
+        .body("memberCount", equalTo(2));
+
+    addMember(adminToken, "third@example.com", "MEMBER").then().statusCode(201);
+    given()
+        .header("Authorization", "Bearer " + adminToken)
+        .get("/api/projects/" + projectId)
+        .then()
+        .statusCode(200)
+        .body("memberCount", equalTo(3));
+
+    given()
+        .header("Authorization", "Bearer " + adminToken)
+        .delete(membersPath() + "/" + thirdId)
+        .then()
+        .statusCode(204);
+    given()
+        .header("Authorization", "Bearer " + adminToken)
+        .get("/api/projects/" + projectId)
+        .then()
+        .statusCode(200)
+        .body("memberCount", equalTo(2));
+
+    // The non-admin member sees their own role on the same project.
+    given()
+        .header("Authorization", "Bearer " + memberToken)
+        .get("/api/projects/" + projectId)
+        .then()
+        .statusCode(200)
+        .body("callerRole", equalTo("MEMBER"))
+        .body("memberCount", equalTo(2));
+  }
+
   // ───────────────────────── AC-3 last-admin guard ─────────────────────────
 
   @Test

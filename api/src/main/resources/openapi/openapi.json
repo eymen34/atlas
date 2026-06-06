@@ -908,6 +908,10 @@
       "ProjectResponse" : {
         "type" : "object",
         "properties" : {
+          "callerRole" : {
+            "type" : "string",
+            "enum" : [ "MEMBER", "ADMIN" ]
+          },
           "createdAt" : {
             "type" : "string",
             "format" : "date-time"
@@ -925,6 +929,10 @@
           },
           "key" : {
             "type" : "string"
+          },
+          "memberCount" : {
+            "type" : "integer",
+            "format" : "int64"
           },
           "name" : {
             "type" : "string"

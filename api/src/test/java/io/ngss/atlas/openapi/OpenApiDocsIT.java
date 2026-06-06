@@ -126,6 +126,44 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t016ProjectResponseExposesCallerRoleAndMemberCount() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode props =
+        root.path("components").path("schemas").path("ProjectResponse").path("properties");
+    assertThat(props.isMissingNode()).as("ProjectResponse schema present").isFalse();
+
+    // memberCount is an integer (long → integer in OpenAPI).
+    assertThat(props.path("memberCount").path("type").asString())
+        .as("memberCount type")
+        .isEqualTo("integer");
+
+    // callerRole is the ProjectRole enum. springdoc may EITHER inline the enum on
+    // the property OR emit a $ref (possibly nested under allOf) to a named
+    // ProjectRole schema. Accept both shapes so the next maintainer cannot
+    // accidentally re-tighten this to one brittle path.
+    JsonNode callerRole = props.path("callerRole");
+    JsonNode inlinedEnum = callerRole.path("enum");
+    boolean inlined =
+        inlinedEnum.isArray()
+            && inlinedEnum.toString().contains("ADMIN")
+            && inlinedEnum.toString().contains("MEMBER");
+    String directRef = callerRole.path("$ref").asString();
+    String allOfRef = callerRole.path("allOf").path(0).path("$ref").asString();
+    boolean referenced = directRef.contains("ProjectRole") || allOfRef.contains("ProjectRole");
+    if (referenced) {
+      JsonNode roleEnum =
+          root.path("components").path("schemas").path("ProjectRole").path("enum");
+      assertThat(roleEnum.toString()).as("ProjectRole named schema enum").contains("ADMIN").contains("MEMBER");
+    }
+    assertThat(inlined || referenced)
+        .as("callerRole must be the ProjectRole enum (inlined or $ref'd), saw: %s", callerRole)
+        .isTrue();
+  }
+
+  @Test
   void loginSuccessResponseRefsAuthResponse() throws Exception {
     JsonNode root =
         objectMapper.readTree(

@@ -21,13 +21,25 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
   boolean existsByKeyAndDeletedAtIsNull(String key);
 
   /**
-   * T-015: live projects the user is a member of (replaces the T-014
-   * created_by-scoped listing). Subquery against project_members; soft-deleted
-   * projects are excluded.
+   * T-016: one-round-trip listing of the live projects the user is a member of,
+   * carrying the caller's role and the project's total member count alongside
+   * each project. Returns a tuple {@code Object[]} of {@code (Project,
+   * ProjectRole, Long)}.
+   *
+   * <p>The {@link Project} root entity is selected directly rather than via a
+   * {@code SELECT new ...(p, ...)} constructor expression: Hibernate 6.6 does not
+   * support an entity argument in a constructor expression, and projecting
+   * {@code p.key} individually would collide with the reserved JPQL {@code KEY}
+   * word. The member count is a correlated scalar subquery, so the whole listing
+   * is ONE SQL statement (no N+1 — enforced by PERF-1). Mirrors the ad-hoc
+   * {@code JOIN ... ON} pattern of
+   * {@link ProjectMemberRepository#findMemberResponsesByProjectId}.
    */
   @Query(
-      "SELECT p FROM Project p WHERE p.deletedAt IS NULL AND p.id IN "
-          + "(SELECT pm.projectId FROM ProjectMember pm WHERE pm.userId = :userId) "
+      "SELECT p, m.role, "
+          + "(SELECT COUNT(m2) FROM ProjectMember m2 WHERE m2.projectId = p.id) "
+          + "FROM Project p JOIN ProjectMember m ON m.projectId = p.id "
+          + "WHERE m.userId = :userId AND p.deletedAt IS NULL "
           + "ORDER BY p.createdAt DESC")
-  List<Project> findLiveProjectsForMember(@Param("userId") UUID userId);
+  List<Object[]> findProjectListRowsForMember(@Param("userId") UUID userId);
 }
