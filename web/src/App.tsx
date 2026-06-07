@@ -9,6 +9,10 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { BoardPage } from './pages/project/BoardPage';
+import { ListPage } from './pages/project/ListPage';
+import { MembersPage } from './pages/project/MembersPage';
+import { SettingsPage } from './pages/project/SettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,7 +38,13 @@ export function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<AppShell />}>
                 <Route path="/projects" element={<ProjectsPage />} />
-                <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+                <Route path="/projects/:projectIdOrKey" element={<ProjectDetailPage />}>
+                  <Route index element={<BoardPage />} />
+                  <Route path="board" element={<BoardPage />} />
+                  <Route path="list" element={<ListPage />} />
+                  <Route path="members" element={<MembersPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/projects" replace />} />
