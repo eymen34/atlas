@@ -79,6 +79,34 @@ public class ProjectAccessGuard {
     }
   }
 
+  /**
+   * Returns the caller's membership for {@code projectId} that was resolved
+   * earlier in THIS request by a {@link #requireMember} / {@link #requireAdmin}
+   * call, reusing the per-request memoization cache — it issues NO new query.
+   *
+   * <p>Lets a service read the caller's {@link ProjectRole} (e.g. for
+   * {@code ProjectResponse.callerRole}) right after an authorization check
+   * without a second {@code findByProjectIdAndUserId}.
+   *
+   * @throws IllegalStateException if no membership for {@code projectId} has been
+   *     resolved yet in this request (i.e. neither {@code requireMember} nor
+   *     {@code requireAdmin} ran first). This surfaces guard misuse loudly rather
+   *     than silently re-querying or returning a stale/empty value.
+   */
+  public ProjectMember getRequestCachedMembership(UUID projectId) {
+    Optional<ProjectMember> cached = cache.get(projectId);
+    if (cached == null) {
+      throw new IllegalStateException(
+          "getRequestCachedMembership("
+              + projectId
+              + ") called before requireMember/requireAdmin in this request");
+    }
+    return cached.orElseThrow(
+        () ->
+            new IllegalStateException(
+                "no membership cached for project " + projectId + " (caller is not a member)"));
+  }
+
   /** Clears the cached membership for a project — call after any membership mutation. */
   public void invalidate(UUID projectId) {
     cache.remove(projectId);

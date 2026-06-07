@@ -19,6 +19,8 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, UU
 
   List<ProjectMember> findByUserId(UUID userId);
 
+  long countByProjectId(UUID projectId);
+
   long countByProjectIdAndRole(UUID projectId, ProjectRole role);
 
   boolean existsByProjectIdAndUserId(UUID projectId, UUID userId);

@@ -1,4 +1,4 @@
-import { AuthService } from './generated';
+import { AuthService, ProjectMembersService, ProjectResponse, ProjectsService } from './generated';
 import { OpenAPI } from './generated/core/OpenAPI';
 import { useAuthStore } from '../store/authStore';
 import { nativeFetch } from './nativeFetch';
@@ -108,8 +108,24 @@ if ('FETCH' in OpenAPI) {
   (window as unknown as PatchedGlobal)[PATCH_FLAG] = true;
 }
 
-export { AuthService };
+export { AuthService, ProjectsService, ProjectMembersService, ProjectResponse };
 
 // Compile-time probe: forces tsc to validate the generated get-current-user
 // operation (operationId getMe) still resolves after codegen.
 export const _getMeTypeProbe: typeof AuthService.getMe = AuthService.getMe;
+
+// T-016 compile-time probes: fail `tsc -b` if codegen drifts from the project /
+// member API the frontend depends on (method names, params, response shapes).
+export const _projectListProbe: typeof ProjectsService.list = ProjectsService.list;
+export const _projectCreateProbe: typeof ProjectsService.create = ProjectsService.create;
+export const _projectGetProbe: typeof ProjectsService.get = ProjectsService.get;
+export const _projectUpdateProbe: typeof ProjectsService.update = ProjectsService.update;
+export const _memberAddProbe: typeof ProjectMembersService.add = ProjectMembersService.add;
+export const _memberChangeRoleProbe: typeof ProjectMembersService.changeRole =
+  ProjectMembersService.changeRole;
+
+// Field-shape probe: callerRole is the ProjectRole enum and memberCount is
+// numeric on ProjectResponse. Referenced (exported) so it is not flagged unused.
+export const _projectResponseFieldProbe = (
+  p: ProjectResponse
+): [ProjectResponse.callerRole | undefined, number | undefined] => [p.callerRole, p.memberCount];
