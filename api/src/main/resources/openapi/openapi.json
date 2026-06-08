@@ -764,6 +764,413 @@
         "tags" : [ "project-members" ]
       }
     },
+    "/api/projects/{id}/tickets" : {
+      "get" : {
+        "description" : "Default sort is updated_at DESC. Optional filters status / assigneeId / priority compose. The q (search) and label params are accepted but currently ignored (reserved for T-018 / T-028).",
+        "operationId" : "listTickets",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          }
+        }, {
+          "in" : "query",
+          "name" : "assigneeId",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "priority",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "P0", "P1", "P2", "P3" ]
+          }
+        }, {
+          "in" : "query",
+          "name" : "q",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "label",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/TicketResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Tickets listed"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/TicketResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Invalid filter value"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/TicketResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/TicketResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a project's live tickets (any member)",
+        "tags" : [ "tickets" ]
+      },
+      "post" : {
+        "operationId" : "createTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateTicketRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket created"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create a ticket in a project (any member); number is auto-assigned",
+        "tags" : [ "tickets" ]
+      }
+    },
+    "/api/tickets/{idOrKey}" : {
+      "get" : {
+        "description" : "A segment matching ^[A-Z][A-Z0-9]{1,9}-\\d+$ is treated as a project-key/number display key; otherwise it is parsed as a UUID. Returns 404 if no live ticket the caller can see matches.",
+        "operationId" : "getTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "idOrKey",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket found"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Fetch a single ticket by UUID id or display key (e.g. ENG-42)",
+        "tags" : [ "tickets" ]
+      }
+    },
+    "/api/tickets/{id}" : {
+      "delete" : {
+        "operationId" : "deleteTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Ticket soft-deleted"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Caller is a member but not an ADMIN"
+          },
+          "404" : {
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Soft-delete a ticket (ADMIN only)",
+        "tags" : [ "tickets" ]
+      },
+      "patch" : {
+        "description" : "Null/absent fields are left unchanged; an explicit empty-string description clears it. A present-but-blank title is a 400. Status is NOT changed here (use the transition endpoint). updatedAt always advances; createdAt and number are never changed.",
+        "operationId" : "updateTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateTicketRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket updated"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Partially update a ticket (any member)",
+        "tags" : [ "tickets" ]
+      }
+    },
+    "/api/tickets/{id}/transition" : {
+      "post" : {
+        "description" : "Any status may transition to any other (MVP — no state-machine). A transition to the current status is a 200 no-op and publishes no event.",
+        "operationId" : "transitionTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TransitionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket transitioned (or no-op if already in that status)"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Transition a ticket's status (any member)",
+        "tags" : [ "tickets" ]
+      }
+    },
     "/health" : {
       "get" : {
         "operationId" : "health",
@@ -856,6 +1263,30 @@
           }
         },
         "required" : [ "key", "name" ]
+      },
+      "CreateTicketRequest" : {
+        "type" : "object",
+        "properties" : {
+          "assigneeId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "description" : {
+            "maxLength" : 65536,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "priority" : {
+            "type" : "string",
+            "enum" : [ "P0", "P1", "P2", "P3" ]
+          },
+          "title" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "title" ]
       },
       "LoginRequest" : {
         "type" : "object",
@@ -972,6 +1403,66 @@
         },
         "required" : [ "displayName", "email", "password" ]
       },
+      "TicketResponse" : {
+        "type" : "object",
+        "properties" : {
+          "assigneeId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "key" : {
+            "type" : "string"
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "priority" : {
+            "type" : "string",
+            "enum" : [ "P0", "P1", "P2", "P3" ]
+          },
+          "projectId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "reporterId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "TransitionRequest" : {
+        "type" : "object",
+        "properties" : {
+          "toStatus" : {
+            "type" : "string",
+            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          }
+        },
+        "required" : [ "toStatus" ]
+      },
       "UpdateMemberRoleRequest" : {
         "type" : "object",
         "properties" : {
@@ -991,6 +1482,29 @@
             "type" : "string"
           },
           "name" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }
+      },
+      "UpdateTicketRequest" : {
+        "type" : "object",
+        "properties" : {
+          "assigneeId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "description" : {
+            "maxLength" : 65536,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "priority" : {
+            "type" : "string",
+            "enum" : [ "P0", "P1", "P2", "P3" ]
+          },
+          "title" : {
             "maxLength" : 200,
             "minLength" : 0,
             "type" : "string"

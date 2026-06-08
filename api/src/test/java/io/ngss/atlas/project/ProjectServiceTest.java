@@ -14,6 +14,8 @@ import io.ngss.atlas.domain.ProjectMember;
 import io.ngss.atlas.domain.ProjectMemberRepository;
 import io.ngss.atlas.domain.ProjectRepository;
 import io.ngss.atlas.domain.ProjectRole;
+import io.ngss.atlas.domain.ProjectTicketCounter;
+import io.ngss.atlas.domain.ProjectTicketCounterRepository;
 import io.ngss.atlas.project.dto.CreateProjectRequest;
 import io.ngss.atlas.project.dto.ProjectResponse;
 import io.ngss.atlas.project.dto.UpdateProjectRequest;
@@ -35,6 +37,7 @@ class ProjectServiceTest {
 
   @Mock ProjectRepository repository;
   @Mock ProjectMemberRepository memberRepository;
+  @Mock ProjectTicketCounterRepository counterRepository;
   @Mock ProjectAccessGuard guard;
   @InjectMocks ProjectService service;
 
@@ -67,6 +70,14 @@ class ProjectServiceTest {
     // T-016: creator view is ADMIN with a single member, computed without a query.
     assertThat(resp.callerRole()).isEqualTo(ProjectRole.ADMIN);
     assertThat(resp.memberCount()).isEqualTo(1L);
+
+    // T-017: a ticket counter is seeded for the new project (next_number = 1).
+    ArgumentCaptor<ProjectTicketCounter> counterCaptor =
+        ArgumentCaptor.forClass(ProjectTicketCounter.class);
+    verify(counterRepository).save(counterCaptor.capture());
+    ProjectTicketCounter seededCounter = counterCaptor.getValue();
+    assertThat(seededCounter.getProjectId()).isEqualTo(resp.id());
+    assertThat(seededCounter.getNextNumber()).isEqualTo(1);
   }
 
   @Test

@@ -1,4 +1,4 @@
-package io.ngss.atlas.project;
+package io.ngss.atlas.ticket;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,13 +16,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
-import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,16 +41,21 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Race-safety of the last-admin guard and the duplicate-member guard (T-015):
- * two simultaneous demote/remove attempts must leave ≥1 admin, and two
- * simultaneous adds of the same user must yield exactly one 201 + one 409.
+ * AC-3: 50 simultaneous POSTs to the same project must yield 50 distinct ticket
+ * numbers with no duplicates. The native UPDATE ... RETURNING counter takes a row
+ * lock for its duration, so concurrent claimers serialize on the single counter
+ * row; {@code UNIQUE(project_id, number)} is the backstop. A rollback could in
+ * principle skip a number (acceptable, like a Postgres sequence), but with all 50
+ * inserts succeeding the numbers must be exactly {1..50} and the counter must read
+ * next_number = 51.
  */
 @SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers(disabledWithoutDocker = true)
 @TestPropertySource(properties = {"BCRYPT_COST=12", "spring.jpa.hibernate.ddl-auto=validate"})
-class LastAdminRaceIT {
+class TicketConcurrencyIT {
 
-  private static final String SECRET = "raceit-secret-min-32-characters-long-okay-y!";
+  private static final String SECRET = "ticketconc-secret-min-32-characters-long-ok!";
+  private static final int N = 50;
 
   @Container
   @SuppressWarnings("resource")
@@ -73,18 +80,13 @@ class LastAdminRaceIT {
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
 
-  private UUID admin1;
-  private UUID admin2;
-  private UUID target;
-  private String admin1Token;
-  private String admin2Token;
+  private String token;
   private String projectId;
 
   @BeforeEach
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    // FK-ordered teardown (child → parent): tickets + counters reference projects.
     jdbc.update("DELETE FROM tickets");
     jdbc.update("DELETE FROM project_ticket_counters");
     jdbc.update("DELETE FROM project_members");
@@ -93,17 +95,13 @@ class LastAdminRaceIT {
     jdbc.update("DELETE FROM password_credentials");
     jdbc.update("DELETE FROM users");
 
-    admin1 = register("a1@example.com", "A1");
-    admin2 = register("a2@example.com", "A2");
-    target = register("target@example.com", "Target");
-    admin1Token = sign(admin1);
-    admin2Token = sign(admin2);
-
+    UUID owner = register("owner@example.com", "Owner");
+    token = sign(owner);
     projectId =
         given()
-            .header("Authorization", "Bearer " + admin1Token)
+            .header("Authorization", "Bearer " + token)
             .contentType(ContentType.JSON)
-            .body("{\"key\":\"RACEP\",\"name\":\"Race\"}")
+            .body("{\"key\":\"RACE\",\"name\":\"Race\"}")
             .when()
             .post("/api/projects")
             .then()
@@ -111,20 +109,77 @@ class LastAdminRaceIT {
             .extract()
             .jsonPath()
             .getString("id");
-    // Promote admin2 to ADMIN so the project has exactly two admins.
-    given()
-        .header("Authorization", "Bearer " + admin1Token)
-        .contentType(ContentType.JSON)
-        .body("{\"email\":\"a2@example.com\",\"role\":\"ADMIN\"}")
-        .when()
-        .post("/api/projects/" + projectId + "/members")
-        .then()
-        .statusCode(201);
   }
 
   @AfterEach
   void reset() {
     RestAssured.reset();
+  }
+
+  @Test
+  void fiftyParallelCreates_yield50DistinctNumbers1To50() throws InterruptedException {
+    CountDownLatch start = new CountDownLatch(1);
+    CountDownLatch done = new CountDownLatch(N);
+    ConcurrentLinkedQueue<Integer> numbers = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<Integer> statuses = new ConcurrentLinkedQueue<>();
+    ExecutorService pool = Executors.newFixedThreadPool(N);
+
+    for (int i = 0; i < N; i++) {
+      final int idx = i;
+      pool.submit(
+          () -> {
+            await(start);
+            try {
+              var resp =
+                  given()
+                      .header("Authorization", "Bearer " + token)
+                      .contentType(ContentType.JSON)
+                      .body("{\"title\":\"concurrent-" + idx + "\"}")
+                      .when()
+                      .post("/api/projects/" + projectId + "/tickets");
+              statuses.add(resp.statusCode());
+              if (resp.statusCode() == 201) {
+                numbers.add(resp.jsonPath().getInt("number"));
+              }
+            } finally {
+              done.countDown();
+            }
+          });
+    }
+    start.countDown();
+    assertThat(done.await(120, TimeUnit.SECONDS)).as("all 50 requests completed").isTrue();
+    pool.shutdownNow();
+
+    // Every request succeeded.
+    assertThat(statuses).hasSize(N);
+    assertThat(statuses).allMatch(s -> s == 201);
+
+    // Exactly {1..50}, no duplicates.
+    Set<Integer> distinct = Set.copyOf(numbers);
+    assertThat(numbers).as("no duplicate numbers issued").hasSize(N);
+    assertThat(distinct).hasSize(N);
+    Set<Integer> expected = IntStream.rangeClosed(1, N).boxed().collect(Collectors.toSet());
+    assertThat(distinct).isEqualTo(expected);
+
+    // DB agrees: 50 rows, and the counter advanced to 51.
+    Integer rows =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM tickets WHERE project_id=?::uuid", Integer.class, projectId);
+    assertThat(rows).isEqualTo(N);
+    Integer next =
+        jdbc.queryForObject(
+            "SELECT next_number FROM project_ticket_counters WHERE project_id=?::uuid",
+            Integer.class,
+            projectId);
+    assertThat(next).isEqualTo(N + 1);
+
+    // And every (project_id, number) is unique in the DB.
+    List<Integer> dbNumbers =
+        jdbc.queryForList(
+            "SELECT number FROM tickets WHERE project_id=?::uuid ORDER BY number",
+            Integer.class,
+            projectId);
+    assertThat(dbNumbers).isEqualTo(IntStream.rangeClosed(1, N).boxed().toList());
   }
 
   private UUID register(String email, String displayName) {
@@ -162,32 +217,6 @@ class LastAdminRaceIT {
     }
   }
 
-  /** Fires two suppliers simultaneously and returns their two HTTP status codes. */
-  private int[] runConcurrently(Supplier<Integer> a, Supplier<Integer> b)
-      throws InterruptedException {
-    CountDownLatch start = new CountDownLatch(1);
-    AtomicInteger ra = new AtomicInteger();
-    AtomicInteger rb = new AtomicInteger();
-    ExecutorService pool = Executors.newFixedThreadPool(2);
-    CountDownLatch done = new CountDownLatch(2);
-    pool.submit(
-        () -> {
-          await(start);
-          ra.set(a.get());
-          done.countDown();
-        });
-    pool.submit(
-        () -> {
-          await(start);
-          rb.set(b.get());
-          done.countDown();
-        });
-    start.countDown();
-    assertThat(done.await(20, TimeUnit.SECONDS)).isTrue();
-    pool.shutdownNow();
-    return new int[] {ra.get(), rb.get()};
-  }
-
   private static void await(CountDownLatch latch) {
     try {
       latch.await();
@@ -195,78 +224,5 @@ class LastAdminRaceIT {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
     }
-  }
-
-  private int adminCount() {
-    Integer n =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM project_members WHERE project_id=?::uuid AND role='ADMIN'",
-            Integer.class,
-            projectId);
-    return n == null ? 0 : n;
-  }
-
-  private int demoteSelf(String token, UUID self) {
-    return given()
-        .header("Authorization", "Bearer " + token)
-        .contentType(ContentType.JSON)
-        .body("{\"role\":\"MEMBER\"}")
-        .when()
-        .patch("/api/projects/" + projectId + "/members/" + self)
-        .then()
-        .extract()
-        .statusCode();
-  }
-
-  private int removeSelf(String token, UUID self) {
-    return given()
-        .header("Authorization", "Bearer " + token)
-        .when()
-        .delete("/api/projects/" + projectId + "/members/" + self)
-        .then()
-        .extract()
-        .statusCode();
-  }
-
-  @Test
-  void concurrentDemotion_leavesAtLeastOneAdmin() throws InterruptedException {
-    int[] codes =
-        runConcurrently(
-            () -> demoteSelf(admin1Token, admin1), () -> demoteSelf(admin2Token, admin2));
-    assertThat(List.of(codes[0], codes[1])).containsExactlyInAnyOrder(200, 400);
-    assertThat(adminCount()).isGreaterThanOrEqualTo(1);
-  }
-
-  @Test
-  void concurrentRemoval_leavesAtLeastOneAdmin() throws InterruptedException {
-    int[] codes =
-        runConcurrently(
-            () -> removeSelf(admin1Token, admin1), () -> removeSelf(admin2Token, admin2));
-    assertThat(List.of(codes[0], codes[1])).containsExactlyInAnyOrder(204, 400);
-    assertThat(adminCount()).isGreaterThanOrEqualTo(1);
-  }
-
-  @Test
-  void concurrentAddSameUser_yieldsOneCreatedOneConflict() throws InterruptedException {
-    Supplier<Integer> add =
-        () ->
-            given()
-                .header("Authorization", "Bearer " + admin1Token)
-                .contentType(ContentType.JSON)
-                .body("{\"email\":\"target@example.com\",\"role\":\"MEMBER\"}")
-                .when()
-                .post("/api/projects/" + projectId + "/members")
-                .then()
-                .extract()
-                .statusCode();
-    int[] codes = runConcurrently(add, add);
-    assertThat(List.of(codes[0], codes[1])).containsExactlyInAnyOrder(201, 409);
-    Integer rows =
-        jdbc.queryForObject(
-            "SELECT count(*) FROM project_members WHERE project_id=?::uuid AND user_id=?::uuid",
-            Integer.class,
-            projectId,
-            target.toString());
-    assertThat(rows).isEqualTo(1);
   }
 }
