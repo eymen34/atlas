@@ -2,6 +2,7 @@ package io.ngss.atlas.ticket;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -18,6 +19,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -299,8 +301,13 @@ class TicketControllerIT {
         .body("assigneeId", equalTo(userA.toString()))
         .body("status", equalTo("TODO")); // PATCH never changes status
 
+    // createdAt is preserved. The create response carries the in-memory Instant
+    // (nanos); the patched response re-reads it from Postgres (timestamptz rounds
+    // to micros), so compare within a tolerance rather than exact-equality — same
+    // as ProjectControllerIT. (truncatedTo(MICROS) would be fragile: PG rounds
+    // while truncatedTo floors, so they can disagree by 1µs on a boundary.)
     assertThat(Instant.parse(patched.jsonPath().getString("createdAt")))
-        .isEqualTo(Instant.parse(createdAt));
+        .isCloseTo(Instant.parse(createdAt), within(1, ChronoUnit.MILLIS));
     assertThat(Instant.parse(patched.jsonPath().getString("updatedAt")))
         .isAfter(Instant.parse(createdAt));
   }
