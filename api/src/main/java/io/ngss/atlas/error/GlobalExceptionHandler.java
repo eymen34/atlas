@@ -11,6 +11,8 @@ import io.ngss.atlas.project.MemberNotFoundException;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.project.ProjectValidationException;
 import io.ngss.atlas.project.UserNotFoundException;
+import io.ngss.atlas.ticket.TicketNotFoundException;
+import io.ngss.atlas.ticket.TicketValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -149,6 +151,22 @@ public class GlobalExceptionHandler {
         HttpStatus.BAD_REQUEST,
         "Project would have no remaining ADMIN; demotion/removal blocked",
         request);
+  }
+
+  @ExceptionHandler(TicketNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleTicketNotFound(
+      TicketNotFoundException ex, HttpServletRequest request) {
+    // Raised for missing/soft-deleted/unresolvable tickets AND (post membership
+    // check) tickets in a project the caller cannot see — uniform 404, no leak.
+    log.info("ticket not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Ticket not found", request);
+  }
+
+  @ExceptionHandler(TicketValidationException.class)
+  public ResponseEntity<ErrorBody> handleTicketValidation(
+      TicketValidationException ex, HttpServletRequest request) {
+    log.info("ticket validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
   }
 
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)

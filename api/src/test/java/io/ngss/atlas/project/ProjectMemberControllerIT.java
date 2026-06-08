@@ -78,6 +78,9 @@ class ProjectMemberControllerIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
+    // FK-ordered teardown (child → parent): tickets + counters reference projects.
+    jdbc.update("DELETE FROM tickets");
+    jdbc.update("DELETE FROM project_ticket_counters");
     jdbc.update("DELETE FROM project_members");
     jdbc.update("DELETE FROM projects");
     jdbc.update("DELETE FROM refresh_tokens");

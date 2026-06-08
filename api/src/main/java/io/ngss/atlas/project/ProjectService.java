@@ -5,6 +5,8 @@ import io.ngss.atlas.domain.ProjectMember;
 import io.ngss.atlas.domain.ProjectMemberRepository;
 import io.ngss.atlas.domain.ProjectRepository;
 import io.ngss.atlas.domain.ProjectRole;
+import io.ngss.atlas.domain.ProjectTicketCounter;
+import io.ngss.atlas.domain.ProjectTicketCounterRepository;
 import io.ngss.atlas.project.dto.CreateProjectRequest;
 import io.ngss.atlas.project.dto.ProjectResponse;
 import io.ngss.atlas.project.dto.UpdateProjectRequest;
@@ -34,14 +36,17 @@ public class ProjectService {
 
   private final ProjectRepository repository;
   private final ProjectMemberRepository memberRepository;
+  private final ProjectTicketCounterRepository counterRepository;
   private final ProjectAccessGuard guard;
 
   public ProjectService(
       ProjectRepository repository,
       ProjectMemberRepository memberRepository,
+      ProjectTicketCounterRepository counterRepository,
       ProjectAccessGuard guard) {
     this.repository = repository;
     this.memberRepository = memberRepository;
+    this.counterRepository = counterRepository;
     this.guard = guard;
   }
 
@@ -65,6 +70,10 @@ public class ProjectService {
     // (rolls back the project row if this fails).
     memberRepository.save(
         new ProjectMember(UUID.randomUUID(), project.getId(), callerId, ProjectRole.ADMIN, null, now));
+    // T-017: seed the per-project ticket counter (next_number = 1 → first ticket is
+    // number 1), in the same transaction. V6 backfills counters for pre-existing
+    // projects; this keeps newly-created ones in lockstep.
+    counterRepository.save(new ProjectTicketCounter(project.getId(), 1));
     // The creator is the sole member and an ADMIN at creation time.
     return ProjectResponse.from(project, ProjectRole.ADMIN, 1L);
   }
