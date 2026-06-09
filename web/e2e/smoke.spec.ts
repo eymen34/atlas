@@ -46,3 +46,16 @@ test('AC-3 unauthenticated /projects redirects to /login with no error', async (
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   expect(pageerrors, pageerrors.map((e) => e.message).join(' | ')).toEqual([]);
 });
+
+test('SEC-4 unauthenticated ticket-list deep link redirects to /login, zero pageerror', async ({
+  page,
+}) => {
+  const pageerrors = await trackPageErrors(page);
+
+  // A direct hit on a nested project route (T-020 list view) must redirect to
+  // /login without the lazy route chunk throwing on the way.
+  await page.goto('/projects/SMOKE/list?status=TODO&page=0', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/login$/, { timeout: 5_000 });
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  expect(pageerrors, pageerrors.map((e) => e.message).join(' | ')).toEqual([]);
+});

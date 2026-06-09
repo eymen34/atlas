@@ -1,6 +1,5 @@
 import {
   AddMemberRequest,
-  ApiError,
   type CreateProjectRequest,
   ProjectMembersService,
   type ProjectResponse,
@@ -8,6 +7,10 @@ import {
   UpdateMemberRoleRequest,
   type UpdateProjectRequest,
 } from './generated';
+
+// T-020: the error helpers moved to a shared module; re-exported here so existing
+// importers (`from '@/api/projects'`) keep working unchanged.
+export { apiErrorStatus, apiErrorMessage } from './errors';
 
 /**
  * T-016 app-facing project/member API.
@@ -133,20 +136,4 @@ export async function changeMemberRole(
 
 export async function removeMember(idOrKey: string, userId: string): Promise<void> {
   await ProjectMembersService.remove(idOrKey, userId);
-}
-
-/** HTTP status of a thrown generated ApiError, or 0 for non-API errors. */
-export function apiErrorStatus(err: unknown): number {
-  return err instanceof ApiError ? err.status : 0;
-}
-
-/** Backend {status,error,message,path}.message if present, else the fallback. */
-export function apiErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { message?: unknown } | null | undefined;
-    if (body && typeof body.message === 'string' && body.message.trim()) {
-      return body.message;
-    }
-  }
-  return fallback;
 }

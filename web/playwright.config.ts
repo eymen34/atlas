@@ -3,9 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 // Two projects (architecture: playwright_architecture):
 //   * smoke              — built bundle on the Vite preview :4173, NO backend.
 //                          Run by `npm run e2e` (= --project=smoke) and CI.
-//   * auth-real-backend  — full register→login→reload→logout against a real
-//                          compose stack at E2E_BASE_URL. LOCAL ONLY via
-//                          `npm run e2e:auth`; NOT wired to CI (deferred T-038).
+//   * auth-real-backend  — full register→login→reload→logout (auth.spec.ts) plus
+//                          the ticket-list create/filter flow (tickets.e2e.spec.ts)
+//                          against a real compose stack at E2E_BASE_URL. LOCAL ONLY
+//                          via `npm run e2e:auth`; NOT wired to CI (deferred T-038).
 //
 // `npm run e2e` scopes to --project=smoke so auth.spec.ts never runs in CI.
 // The preview webServer is skipped when E2E_BASE_URL is set (auth mode targets
@@ -29,7 +30,7 @@ export default defineConfig({
     },
     {
       name: 'auth-real-backend',
-      testMatch: /auth\.spec\.ts$/,
+      testMatch: /(auth\.spec|tickets\.e2e\.spec)\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',

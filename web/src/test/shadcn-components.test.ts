@@ -9,6 +9,7 @@ const uiDir = path.resolve(__dirname, '..', 'components', 'ui');
 //  tabs, select, textarea, avatar, badge, separator, scroll-area, command]
 // but `toast` was substituted with `sonner` (shadcn 4.x deprecated `toast`)
 // per the documented architecture amendment (toast_library = sonner).
+// T-020 added `table` for the ticket-list view.
 const CANONICAL_SHADCN_FILES = [
   'button.tsx',
   'input.tsx',
@@ -26,12 +27,13 @@ const CANONICAL_SHADCN_FILES = [
   'separator.tsx',
   'scroll-area.tsx',
   'command.tsx',
+  'table.tsx',
 ] as const;
 
 describe('AC-3.1 shadcn UI component scaffold', () => {
-  it('contains exactly 16 .tsx files in src/components/ui/', () => {
+  it('contains exactly 17 .tsx files in src/components/ui/', () => {
     const tsx = readdirSync(uiDir).filter((f) => f.endsWith('.tsx'));
-    expect(tsx).toHaveLength(16);
+    expect(tsx).toHaveLength(17);
   });
 
   for (const filename of CANONICAL_SHADCN_FILES) {

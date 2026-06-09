@@ -1,4 +1,11 @@
-import { AuthService, ProjectMembersService, ProjectResponse, ProjectsService } from './generated';
+import {
+  AuthService,
+  LabelsService,
+  ProjectMembersService,
+  ProjectResponse,
+  ProjectsService,
+  TicketsService,
+} from './generated';
 import { OpenAPI } from './generated/core/OpenAPI';
 import { useAuthStore } from '../store/authStore';
 import { nativeFetch } from './nativeFetch';
@@ -129,3 +136,11 @@ export const _memberChangeRoleProbe: typeof ProjectMembersService.changeRole =
 export const _projectResponseFieldProbe = (
   p: ProjectResponse
 ): [ProjectResponse.callerRole | undefined, number | undefined] => [p.callerRole, p.memberCount];
+
+// T-020 compile-time probes: fail `tsc -b` if codegen drifts from the ticket /
+// label API the list view depends on (operationId / method-name stability).
+export const _ticketListProbe: typeof TicketsService.listProjectTickets =
+  TicketsService.listProjectTickets;
+export const _ticketCreateProbe: typeof TicketsService.createTicket = TicketsService.createTicket;
+export const _labelListProbe: typeof LabelsService.listProjectLabels =
+  LabelsService.listProjectLabels;
