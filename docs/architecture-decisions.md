@@ -1,16 +1,145 @@
-# Architecture decisions — repo-local sign-offs
+# atlas — Canonical Architecture Decisions
 
-> The canonical, full decisions register is maintained in the team's planning
-> handoff and pasted into each ticket's Lead session. This file records
-> repo-local sign-offs that a ticket was asked to commit alongside code.
+> **Single source of truth.** Paste this whole file (or a curated subset) into every
+> ticket's Lead session. Do NOT let the Lead regenerate it from memory — that is how
+> `project_structure` once drifted to "multi-module" in T-011.
+>
+> **How to maintain:** Grow monotonically. When a decision changes, update it in place
+> and note when/why (e.g. "superseded by T-018"). New lessons go under
+> **Patterns & Lessons** with a `[T-xxx]` tag. See **Maintenance protocol** at the bottom.
+>
+> **Last updated:** T-019 (activity log: entity, synchronous writer, paginated GET).
 
-## toast_library (T-013 sign-off)
+---
 
-`sonner` is the toast library, mounted as a single `<Toaster richColors position="top-right" />`.
+## 1. Stack & platform
 
-**Relocation (T-013):** the `Toaster` is mounted at the **App.tsx root** (above
-`<Routes>`), NOT inside `AppShell`. Rationale: `/login` and `/register` render
-outside `AppShell`, and they must be able to surface toasts (e.g. the
-"Account created — please sign in" hint after a registration that could not
-auto-login). Mounting at the root makes toasts available on every route,
-authenticated or not. Do not move the `Toaster` back into `AppShell`.
+- **java_version**: Java 21 LTS, Temurin. JAVA_HOME → Temurin 21. (Java 26 caused ecosystem incompatibilities during T-001–T-005.)
+- **backend_framework**: Spring Boot 4.0.6 on Spring Framework 7.0.7.
+- **orm**: Spring Data JPA + Hibernate 6.6. pgBouncer transaction mode: PgJDBC prepareThreshold=0, preparedStatementCacheQueries=0, no session-scoped state. Entities in `io.ngss.atlas.domain`.
+- **migration_tool**: Flyway 10.20.x, SQL-first, forward-only, flyway_schema_history row-lock for concurrent safety. Applied: V1 baseline (users), V2 auth_tokens (refresh_tokens + password_credentials, T-009), V3 user_fields (users.display_name, T-011), V4 projects (T-014), V5 project_members (T-015), V6 tickets + project_ticket_counters (T-017), V7 labels + ticket_labels (T-018), V8 activity_events (T-019). **Next is V9.**
+- **build_tool**: Maven 3.9.9, Spring Boot 4 parent POM. SINGLE `/api` Maven module (root pom `<modules>` = only api). Frontend built in `/web`, copied into `/api/src/main/resources/static/` before `mvn package`.
+- **postgres_version**: PostgreSQL 17.x. No extensions (no citext, no uuid-ossp). `gen_random_uuid()` is PG17 core and allowed (but app generates UUIDs — see `entity_appcds_hard_rule`).
+- **postgres_extensions**: No Postgres extensions required. A genuine extension need = HARD BLOCKER to flag in ticket assumptions. (Functional indexes like `UNIQUE (project_id, lower(name))` are core DDL, NOT extensions — allowed.)
+- **frontend_build**: Vite 8.0.x + React 19.2 + TypeScript 6.0 + React Router 7.x. React Compiler OFF. Dev :5173, preview :4173. Output bundled into the Spring Boot jar.
+- **frontend_state**: TanStack Query 5.59.x (server state) + Zustand 5.x (transient UI state).
+- **ui_library**: shadcn/ui on Tailwind CSS 4.3.x (no tailwind.config.js). TipTap 2.x, react-day-picker 9.x, cmdk 1.x.
+- **toast_library**: sonner, mounted as Toaster in AppShell.
+- **local_dev_java_runtime**: Local dev MUST use Java 21 LTS Temurin. JAVA_HOME → Temurin 21 (`C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot` on the dev Windows box).
+
+---
+
+## 2. Architecture & cross-cutting
+
+- **project_structure**: Monorepo. `/api` (Maven, SINGLE module), `/web` (npm, Vite), `/deploy/{docker-compose.yml,helm/,cron/}`, `/docs/`. Package root `io.ngss.atlas`. FLAT packages: `io.ngss.atlas.{auth, auth.dto, domain, security, config, error, filter, health, project, project.dto, ticket, ticket.dto, ticket.event, label, label.dto, common, activity, activity.dto, activity.payload}`. NO `shared/` or `domain/` Maven modules. Main class `io.ngss.atlas.Application`. Controllers live with their aggregate (e.g. `AuthController` in `io.ngss.atlas.auth`) — NOT in `io.ngss.atlas.api.controller`. GlobalExceptionHandler (single `@ControllerAdvice`) in `io.ngss.atlas.error` — NOT `io.ngss.atlas.web`. [CORRECTED T-011 (was wrongly "multi-module"); package detail corrected T-012 (error not web).]
+- **api_style**: REST + OpenAPI 3.1 via springdoc-openapi 2.6.x. Error body shape: `{status:number, error:string, message:string, path:string}` (NOT RFC9457 problem+json). Status codes: 201 create, 409 conflict, 400 validation, 401 auth, 403 forbidden, 404 not found. Endpoints declare `produces=application/json` (class-level `@RequestMapping`) + `consumes=application/json` on body POSTs/PATCHes/PUTs so springdoc emits `application/json` keys not `*/*`. Stub endpoints declare real DTOs so OpenAPI is stable from day one.
+- **json_library**: Spring Boot 4.0.6 uses Jackson 3 (`tools.jackson.databind.*`). ALL new JSON-mapper code uses `tools.jackson.*` — NOT `com.fasterxml.jackson.*`. DTOs: records + jakarta.validation + (where needed) `@JsonProperty(access=WRITE_ONLY)` for write-only fields like passwords; NEVER `@JsonIgnore` on request-bound fields. (Discovered T-005, fixed 65486d4.)
+- **auth**: Spring Security 6. Stateless: short-lived JWT access tokens (HS256, 15-min TTL, sub=userId) + opaque refresh tokens (30-day TTL) persisted in refresh_tokens with rotation-on-use + revocation. Passwords BCrypt cost 12. Refresh token: store SHA-256 hash, never raw. (T-009 scaffold; T-011 register; T-012 login/refresh/logout/me.)
+- **project_authorization** [T-015]: `ProjectAccessGuard` (`@RequestScope`, per-request membership cache) is the single authz point. `requireMember(projectId)` → non-member 404 (existence-leak prevention). `requireAdmin(projectId)` → non-member 404, member-non-admin 403 (two-layer: visibility gate then capability gate). `getRequestCachedMembership(projectId)` reads the cache without re-querying (throws IllegalStateException if called before a require*). For ticket/label-scoped endpoints with no projectId in the URL: LOAD the entity, extract projectId, then guard (load-then-guard). [T-017/T-018]
+- **token_rotation** [T-012]: refresh-on-use. `rotate()` = atomic `markRevokedIfLive(id,now) WHERE revoked_at IS NULL`, require affected_rows==1 (race-safe; loser → 401); set old.replaced_by_id = new.id; issue new pair. Reusing a revoked token → 401 (theft signal). token_hash UNIQUE is the secondary guard. (Token-chain auto-revoke is P1 backlog.)
+- **refresh_token_storage** [T-012]: raw refresh token = 32 SecureRandom bytes, base64url-no-pad (43 chars), returned to client ONCE, never persisted. Stored as SHA-256 hex (token_hash CHAR(64)). Lookup by hash.
+- **realtime**: HTTP polling only. Notification bell polls 30s via TanStack Query `refetchInterval`. No WebSocket/SSE/@Scheduled.
+- **background_work**: Single deployable. Outbox table (pending→processing→sent|failed), drained by `POST /internal/tasks/drain-outbox` (shared-secret) via external cron. The shared-secret filter is T-029; until then `/internal/**` is denyAll (T-009).
+- **object_storage**: S3-compatible via AWS SDK v2. MinIO local, real S3/R2 prod. Presigned URLs only; app never proxies file bodies.
+- **search**: PostgreSQL tsvector generated column + GIN index, ts_rank_cd. English default, env-overridable. (The `q` filter param on ticket list is accepted-but-ignored until the search ticket lands.)
+- **email**: SMTP via Spring JavaMailSender, env-configurable, queued through outbox, never inline.
+- **connection_pool**: HikariCP, maxPoolSize=10, minIdle=2, connectionTimeout=5000, idleTimeout=30000. DB_POOL_MAX/DB_POOL_MIN read via `System.getenv` in DataSourceConfig (NOT relaxed binding). PgJDBC prepareThreshold=0, preparedStatementCacheQueries=0, tcpKeepAlive=true.
+- **env_var_convention**: App config uses `APP_` prefix (APP_DATABASE_URL/USERNAME/PASSWORD → app.database.*, consumed by DataSourceConfig). APP_DATABASE_STARTUP_CHECK_ENABLED defaults true, image-build-only, NEVER false in deployment. Canonical env reference `/.env.example`: JWT_SECRET, JWT_ACCESS_TTL_SECONDS=900, REFRESH_TOKEN_TTL_DAYS=30, BCRYPT_COST=12.
+
+---
+
+## 3. Observability & security surface
+
+- **observability**: `GET /health` (liveness) + `GET /ready` (readiness, DB ping) — unauthenticated, <100ms, JSON `{"status":"UP"}` / `{"status":"READY"}`. Structured JSON logs to stdout via Logback + logstash-logback-encoder. Prometheus at `/actuator/prometheus`. RequestIdFilter (T-005, HIGHEST_PRECEDENCE, public MDC_KEY/HEADER constants) sets X-Request-Id, ordered before the security chain.
+- **actuator_security_surface**: Permitted unauthenticated: `/actuator`, `/actuator/health`, `/actuator/health/**`, `/actuator/prometheus`. All other actuator endpoints → 401 (Security intercepts before the exposure layer, so 401 not 404). NO blanket `/actuator/**` permit. (Established T-009.)
+
+---
+
+## 4. Cold start, AppCDS, AOT
+
+- **cold_start_strategy**: JVM + Spring AOT + AppCDS. No GraalVM native in MVP. Target `/ready` ≤5s on 1 vCPU/512MB. AppCDS is the primary win; AOT (the marginal ~100-200ms layer) moved to opt-in `-P aot` profile due to `springdoc_boot4_aot_incompatibility` (re-enable default AOT when springdoc ships Boot 4 support).
+- **hibernate_cold_start**: Pair-rule: `hibernate.boot.allow_jdbc_metadata_access=false` REQUIRES `spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect`. (Discovered T-005, fixed bc6696f.)
+- **appcds_boot_safety**: Dockerfile stage 3 boots the full context (`spring.context.exit=onRefresh`) with NO reachable DB + placeholder env to build the AppCDS archive. ANY bean that throws at context-refresh when a dependency/secret is absent breaks the AppCDS build → docker-build CI red. New beans must tolerate missing secrets at refresh time (`@Value("${JWT_SECRET:}")` empty default + isBlank guard, validated LAZILY at first use — NOT in constructor) AND/OR secret supplied as inline-env placeholder on the stage-3 RUN. Stage 3 passes APP_DATABASE_* placeholders + APP_DATABASE_STARTUP_CHECK_ENABLED=false + SPRING_FLYWAY_ENABLED=false + JWT_SECRET=cds-build-placeholder-secret-min-32-characters-long (48 chars). Inline env on RUN, not ENV directive. (Established T-006, extended T-009/T-012.)
+- **smartlifecycle_toggle_pattern**: External-resource-touching SmartLifecycle beans support `${app.<feature>.enabled:true}` @Value toggle + early-return guard in `start()`, so the AppCDS image-build boots without the resource. Defaults true, WARN-logs when disabled. False in deployment FORBIDDEN. (Established T-006, DatabaseStartupValidator.)
+- **entity_appcds_hard_rule** [T-011]: ALL `@Entity` classes in `io.ngss.atlas.domain` MUST init without JDBC metadata access. NO `@GeneratedValue` on `@Id` (UUIDs app-generated via `UUID.randomUUID()`). No custom types needing DB introspection at metamodel build. **No JSON/DB-function column types.** No `@ManyToOne`/`@ManyToMany`/`@OneToOne` associations where a plain UUID FK column suffices (keep the metamodel minimal). Violation breaks the Dockerfile stage-3 AppCDS no-DB boot. Documented in `domain/package-info.java`. (Entity count as of T-019: 10 — User, PasswordCredential, RefreshToken, Project, ProjectMember, Ticket, ProjectTicketCounter, Label, TicketLabel, ActivityEvent.)
+- **char_column_jdbctypecode** [T-012]: A fixed-width CHAR(n) column mapped to a String entity field MUST use `@JdbcTypeCode(SqlTypes.CHAR)`, else Hibernate's default String→VARCHAR mapping fails `ddl-auto=validate`. Example: refresh_tokens.token_hash CHAR(64) → `@JdbcTypeCode(CHAR)`.
+
+---
+
+## 5. springdoc / OpenAPI pipeline
+
+- **springdoc_boot4_aot_incompatibility** [T-009]: springdoc 2.6.0's QuerydslPredicateOperationCustomizer references Spring Data 3.x TypeInformation, moved to `.core` in Spring Data 4.0.5 (Boot 4.0.6). Runtime UNAFFECTED (bean is `@ConditionalOnClass(Querydsl)`, never instantiated). But Spring AOT's PersistenceAnnotationBeanPostProcessor introspects all bean classes → NoClassDefFoundError, breaks `mvn verify` + Dockerfile stage 2. Resolution: process-aot removed from default binding (T-006), moved to opt-in `-P aot` profile. `mvn -P aot verify` is the readiness check for when springdoc fixes this. FORBIDDEN: version upgrade, TypeInformation shim, autoconfig exclusion.
+- **springdoc_controlleradvice_spring7** [T-011]: springdoc 2.6.0 calls `ControllerAdviceBean(Object)`, REMOVED in Spring Framework 7. Any `@ControllerAdvice` present → `/v3/api-docs` throws NoSuchMethodError → 500, breaking the spec dump, OpenApiDocsIT, runtime docs. Resolution: `springdoc.override-with-generic-response=false` in application.yml. Per-endpoint `@ApiResponses` declared explicitly so nothing is lost. The flag is in application.yml — do NOT remove it. FORBIDDEN: version upgrade/shim/exclusion.
+- **springdoc_operationid_stability** [T-017]: Adding an endpoint can shift springdoc's auto-disambiguated operationIds → generated client method names change → T-016 drift probes break. Give EVERY new endpoint an explicit distinct `@Operation(operationId=…)`.
+- **springdoc_enum_emission** [T-015]: springdoc 2.6 may inline an enum on the field rather than emitting a named `$.components.schemas.EnumName`. Use tolerant matchers in OpenApiDocsIT that handle both inlined-enum AND `$ref` shapes; do NOT re-tighten to a brittle single path.
+- **generated_artifacts_and_spec** [T-010]: Canonical OpenAPI spec at `api/src/main/resources/openapi/openapi.json` (COMMITTED, LF via .gitattributes, drift-checked — PR-diff visibility). `web/openapi.json` = derived build-time copy (gitignored). `web/src/api/generated/` = derived TS client (gitignored). Any controller change that alters the contract REQUIRES `mvn -pl api -am verify` to regenerate + commit openapi.json, or the CI drift-check fails. Spec is OpenAPI 3.0.1 (springdoc 2.6 default).
+- **build_time_file_dependencies_cross_docker_stages** [T-010]: A build-time step depending on a file (e.g. TS codegen reading openapi.json) cannot reach a file outside its Docker multi-stage context. Pattern: COPY the file into the consumer stage + a tolerant stager script (copy from source if present = local/CI, else fall back to pre-staged copy = Docker stage, else error) + consumer reads a stage-relative path. Build-time file deps MUST be checked against Docker stage boundaries when writing tickets.
+
+---
+
+## 6. CI & delivery
+
+- **ci**: GitHub Actions `pr.yml`: 5 jobs — backend (`mvn verify` incl. Testcontainers IT + OpenAPI drift-check), frontend (lint + vitest + build + codegen), e2e-smoke (Playwright on Vite preview :4173), docker-build (production Dockerfile, no push), pr-gate (gates all five). GHCR push deferred. pr.yml EXISTS and is green — EXTEND, never rewrite. (NOTE: review whether `push: main` trigger should be removed to stop the double-run on merge — see Open backlog.)
+- **ci_before_finalized_policy**: A ticket may NOT be FINALIZED on local checks alone if any IT self-skips (`@Testcontainers disabledWithoutDocker`) or acceptance depends on Docker/CI-Linux behavior. **FINALIZED-PENDING-CI** until the GitHub Actions run goes green. **Merge only after all 5 jobs are green** (a red CI was once merged manually at T-017 — do not repeat; branch protection on `main` requiring pr-gate is the durable fix).
+- **local_dev_docker_access**: `docker build` + `docker compose` work on Windows; only Testcontainers is affected (named-pipe / npipe BadRequestException). CI runners are Linux. Testcontainers ITs self-skip locally and can ONLY be validated in CI — local `mvn verify` "PASS" does NOT prove Testcontainers-gated tests. Such tickets are CI-iterative. BUT: AppCDS via `docker build` IS locally reproducible — verify it locally before pushing.
+- **testcontainers_deferral_policy**: All Testcontainers tests MUST be `@Testcontainers(disabledWithoutDocker=true)`. Self-skip on Docker-less dev machines; CI Linux runners execute them.
+- **flyway_dependency**: `spring-boot-starter-flyway` REQUIRED for FlywayAutoConfiguration. flyway-core alone is insufficient. (Discovered T-005, fixed e575d0c.)
+- **container_image_tags**: Production image `atlas:latest` from `/Dockerfile` (4-stage AppCDS). Dev image `atlas:dev` from `/Dockerfile.dev` (single-stage, `mvn spring-boot:run`). Artifact atlas-api, jar atlas-api-0.1.0-SNAPSHOT.jar. CI test build tag `atlas:ci-test`. Image size budget 450 MiB. GHCR push (ghcr.io tags) + jlink optimization deferred.
+- **playwright_architecture**: Playwright e2e (`web/e2e/*.spec.ts`) runs against Vite PREVIEW :4173 (config `webServer: npm run preview`), NOT backend :8080. Smoke specs check that frontend routes render via AppShell, HTTP 200, visible header, zero pageerror. No backend/DB needed. e2e-smoke is an ISOLATED CI job (`needs:[frontend]`); Playwright removed from the frontend job (runs once). Backend-dependent full-flow specs go in `web/e2e-local/` excluded from CI via `testIgnore` (nightly-deferred). npm scripts: build (`tsc -b && vite build`), preview (`vite preview --port 4173 --strictPort`), lint (`eslint . --max-warnings 0`), test (`vitest run`), e2e (`playwright test`). (Established T-003/T-008, extended T-016.)
+- **nightly_e2e_deferral**: Nightly full Playwright workflow deferred until a genuine full suite exists. `FlywayConcurrentBootIT` (T-004 dual-boot) is a BACKEND JUnit/Testcontainers test run by `mvn verify`, NOT Playwright — never place it in an e2e workflow.
+
+---
+
+## 7. Patterns & Lessons (hard-won, tagged by ticket)
+
+- **test_cleanup_fk_order** [T-015]: When a new FK'd table is added, EVERY existing IT setUp/cleanup that deletes a parent must delete the new child first — child tables before parents (all FKs are ON DELETE NO ACTION, no cascade). T-015 skipped adding project_members to a reframed ProjectControllerIT.setUp → 31 FK-violation failures. Newly-written ITs were correct; the inherited IT carried the stale cleanup. RULE: any ticket adding an FK'd table greps `DELETE FROM <parent>` across the test tree. (Sibling of T-011's NOT-NULL-fixture lesson.) → Now centralized via `base_it_cleanup`.
+- **base_it_cleanup** [T-018]: FK-ordered teardown lives in ONE place — `BaseIT.cleanDatabase(JdbcTemplate)` (static helper, every IT calls it). Adding a new child table = update only this method. Current order (child→parent): `activity_events → ticket_labels → labels → tickets → project_ticket_counters → project_members → projects → refresh_tokens → password_credentials → users`.
+- **counter_returning_pattern** [T-017]: Per-project monotonic counter = native `UPDATE … RETURNING` executed via an EntityManager fragment (NOT a Spring Data `@Modifying` method — `@Modifying` returning int gives affected-rows, NOT the RETURNING value → every ticket number would be 1). Distinct from PESSIMISTIC_WRITE: used for unconditional atomic increment (no read-decide-write). Seed counter row at project create + backfill existing. First ticket number MUST be 1 — assert it.
+- **ticket_number_full_unique** [T-017]: `UNIQUE (project_id, number)` is FULL (no `WHERE deleted_at IS NULL`) — a ticket number is a permanent external reference (URL/comment/commit), never reused. Deliberately different from `projects.key`'s partial unique index (key reuse after soft-delete IS wanted; number reuse is NOT).
+- **paged_response_pattern** [T-018]: List endpoints return a custom `io.ngss.atlas.common.PagedResponse<T>(List<T> items, int page, int size, long total)` + `PagedResponse.from(Page<U>, Function)` — NOT Spring's `Page<>` (its JSON serialization is verbose + version-fragile; Boot warns against serializing PageImpl). Internal query may use Spring `Pageable`/`Specification`; the external contract is the custom record. Offset pagination, `?page=&size=`, size clamped 1..100. (Supersedes T-017 D1 "list returns bare array, no pagination".)
+- **join_entity_surrogate** [T-018]: Join tables (e.g. ticket_labels) use a surrogate UUID `@Id` + `UNIQUE(a_id, b_id)` — NOT `@EmbeddedId`/`@IdClass`. A composite-key metamodel is a novel AppCDS risk; the surrogate-UUID pattern is the proven `entity_appcds_hard_rule`-safe shape (same as ProjectMember).
+- **relational_division_pattern** [T-018]: "has ALL of N" filtering (e.g. tickets with all listed labels, AND-semantics) = subquery `SELECT child_fk … WHERE tag IN (:ids) GROUP BY child_fk HAVING COUNT(DISTINCT tag) = :n`, NOT `IN` (which is OR-semantics). In a JPA Specification: subquery + groupBy + having(countDistinct = size).
+- **timestamp_precision_assert** [T-017 hotfix]: Postgres `timestamptz` is microsecond precision; Java `Instant` is nanosecond. Timestamp tests must NEVER assert exact equality against a DB round-trip — use `isAfter`/`isBefore` or `.truncatedTo(ChronoUnit.MICROS)`.
+- **event_test_recorder** [T-017 hotfix]: Event tests use Spring's `@RecordApplicationEvents` + injected `ApplicationEvents`, NOT a custom inner-class recorder (an inner `@Component` isn't registered by component-scan → UnsatisfiedDependency).
+- **branch_base_discipline** [T-017]: Every ticket branch MUST be cut from CURRENT `origin/main`. Run `git checkout main`, `git pull`, `git fetch` first. T-017 was ESCALATED twice because its branch was cut from a stale local main (T-012) → the anchor files it depended on (Project/ProjectMember/guard, V4/V5) didn't exist on the branch → the dev agent lost codebase context and drifted to a generic skeleton. The fix is git hygiene, not design. (PowerShell note: chain commands on separate lines or with `;`, NOT `&&`.)
+- **read_anchor_files_first** [T-017]: Before writing code for a ticket that reuses prior aggregates, the implementer must actually READ the existing anchor sources (e.g. ProjectMember, ProjectService, GlobalExceptionHandler, ProjectAccessGuard) — not reconstruct them from memory. Claude Code has real filesystem access and should use it; this is what prevents the com.example-style drift. (T-019 confirmed: the handoff carried a 2-arg `requireMember(projectId, userId)` template artifact, but the real guard is 1-arg reading CurrentUser internally — Claude Code read the real source and used the 1-arg form. Likewise the handoff assumed a `Clock` bean that doesn't exist; the codebase stamps `Instant.now()` directly. Reading beats reconstructing.)
+- **activity_synchronous_writer** [T-019]: Audit/activity rows are written SYNCHRONOUSLY by a writer service (`@Transactional(propagation=MANDATORY)`, joins the caller's transaction, never opens its own) — NOT via `@TransactionalEventListener`. AFTER_COMMIT listeners break atomicity: the originating change commits, then a failed activity write leaves a history gap. MANDATORY also fails fast (IllegalTransactionStateException) if a caller forgot `@Transactional`. The pre-existing domain event (TicketTransitionedEvent) STAYS but serves a different purpose — async notification fan-out (T-024), consumed AFTER_COMMIT. Two mechanisms, two purposes: writer = atomic audit; event = async notify. Activity timestamp reuses the originating operation's `Instant.now()` so the audit row shares the change's instant.
+- **json_payload_as_text** [T-019]: A JSON-shaped column that is never queried internally (only written, read, and deserialized to a DTO) is stored as `text` (Java `String`) + serialized/deserialized with Jackson 3 in the service layer — NOT `jsonb`. `entity_appcds_hard_rule` forbids JSON column types (metamodel JDBC introspection risk). The read DTO exposes the parsed value as a `tools.jackson.databind.JsonNode` (via `ObjectMapper.readTree`) so the HTTP response carries a real nested JSON object, not an escaped string. If payload-internal querying is ever needed, `ALTER COLUMN … TYPE jsonb USING …::jsonb` later (text→jsonb is easy; the reverse is not). Align the entity field length with the migration: `event_type varchar(32)` ↔ `@Column(length=32)`; plain `text` payload ↔ `@Column(columnDefinition="text")`.
+- **webmvctest_unavailable** [T-018, confirmed T-019]: `@WebMvcTest` / `@AutoConfigureMockMvc` are NOT on the Boot 4.0.6 test classpath without adding a dependency (out of scope). Write controller-slice unit tests as plain Mockito tests that invoke the controller method directly and capture arguments (e.g. capture the `Pageable` to assert size/page clamping) instead of a MockMvc slice. Do NOT add the dependency just for a slice test.
+- **event_recorder_same_thread** [T-017, confirmed T-019]: `@RecordApplicationEvents` only sees events published on the test thread. Under `@SpringBootTest(webEnvironment=RANDOM_PORT)` an HTTP call publishes the event on a Tomcat worker thread the recorder cannot observe → false negative. Event-interplay tests must drive the action via a DIRECT controller/service method call (same thread), not an HTTP round-trip. (Sibling of `event_test_recorder`: that one is about the recorder mechanism; this one is about the thread it observes.)
+
+---
+
+## 8. Open backlog (tracked, not yet decided/built)
+
+- **CI double-run**: `pr.yml` triggers on both `pull_request` and `push: main` → runs twice (once on PR, again on merge to main). For a serial single-developer flow, remove the `push: main` trigger (keep `pull_request` only) to stop the redundant run. Pair with branch protection (require pr-gate) so main is only reached via green PRs.
+- **branch protection**: Enable on `main` — require status check `pr-gate` before merge. Prevents the manual red-CI merge that happened at T-017.
+- P1: token-chain theft auto-revocation (rotate of a revoked token → revoke the whole replaced_by_id chain). T-012 returns a single 401 only.
+- "Logout all devices" (single-user mass-revoke). T-012 chose single-token revoke.
+- Brute-force rate limiting on login.
+- Email verification, password reset.
+- N5 [T-011]: `existsByEmailIgnoreCase` uses `UPPER()` not the `lower(email)` functional index — replace with a `@Query` `lower()` when the users table grows.
+- GHCR push + jlink image optimization.
+- T-029: `/internal` shared-secret filter (converts the current denyAll).
+- T-024: notification fan-out — an AFTER_COMMIT `@TransactionalEventListener` on TicketTransitionedEvent (the publish already exists from T-017, kept live through T-019) creates notification rows; the bell polls them (per `realtime`). Activity log (T-019) is separate and already shipped.
+- Cross-user logout existence oracle [T-012]: 403 distinguishes "exists but not yours" from absent — accepted risk (256-bit token entropy).
+- Optimistic updates for member role/removal (T-016 chose simple invalidation).
+- Real-backend full-flow E2E (register→create→add→see) — deferred to a nightly suite; currently a `web/e2e-local/` spec excluded from CI.
+- `q` full-text search filter on ticket list (param accepted-but-ignored until the search ticket).
+
+---
+
+## 9. Maintenance protocol (how Claude updates this file)
+
+After each ticket is FINALIZED + merged, update this file as follows:
+
+1. **Bump "Last updated"** at the top to the just-merged ticket.
+2. **migration_tool**: add the new `Vn` migration to the applied list, bump "Next is Vn+1".
+3. **entity_appcds_hard_rule**: bump the entity count + list if a new `@Entity` was added.
+4. **project_structure**: add any new package to the FLAT package list.
+5. **base_it_cleanup**: update the delete order if a new FK'd table was added.
+6. **New lessons** → add under **Patterns & Lessons** with a `[T-xxx]` tag, one tight paragraph: what bit us, the rule, why. (Sourced from the ticket_result's post_implementation_notes + any CI-fix that occurred.)
+7. **Superseded decisions**: edit in place, append "(superseded by T-xxx: …)" — never delete history silently.
+8. **Open backlog**: move resolved items out; add newly-deferred items in.
+
+When pasting into a Lead session, paste **Sections 1–7** (the decisions + lessons). Section 8 (backlog) and Section 9 (this protocol) are optional context — include if the ticket touches a backlog item.
