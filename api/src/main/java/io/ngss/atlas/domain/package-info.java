@@ -1,8 +1,9 @@
 // Domain layer. Holds the project's JPA entities (User, PasswordCredential —
 // T-011; RefreshToken — T-012; Project — T-014; ProjectMember — T-015; Ticket +
-// ProjectTicketCounter — T-017; Label + TicketLabel — T-018), most of their Spring
-// Data repositories (the Label/TicketLabel repositories live in io.ngss.atlas.label
-// alongside that aggregate's service), the EmailAlreadyRegisteredException, and
+// ProjectTicketCounter — T-017; Label + TicketLabel — T-018; ActivityEvent —
+// T-019), most of their Spring Data repositories (the Label/TicketLabel and
+// ActivityEvent repositories live in io.ngss.atlas.label / io.ngss.atlas.activity
+// alongside those aggregates' services), the EmailAlreadyRegisteredException, and
 // RegistrationService.
 //
 // APPCDS COLD-START HARD RULE (N6 / appcds_boot_safety): every @Entity here is
