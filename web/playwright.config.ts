@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
 //                          the ticket-list create/filter flow (tickets.e2e.spec.ts)
 //                          against a real compose stack at E2E_BASE_URL. LOCAL ONLY
 //                          via `npm run e2e:auth`; NOT wired to CI (deferred T-038).
+//   * e2e-local          — real-backend full-flow specs under ./e2e-local
+//                          (nightly_e2e_deferral). LOCAL ONLY via `npm run e2e:local`;
+//                          a separate testDir keeps it out of the smoke (CI) run.
 //
 // `npm run e2e` scopes to --project=smoke so auth.spec.ts never runs in CI.
 // The preview webServer is skipped when E2E_BASE_URL is set (auth mode targets
@@ -31,6 +34,14 @@ export default defineConfig({
     {
       name: 'auth-real-backend',
       testMatch: /(auth\.spec|tickets\.e2e\.spec)\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
+      },
+    },
+    {
+      name: 'e2e-local',
+      testDir: './e2e-local',
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',

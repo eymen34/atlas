@@ -1,10 +1,14 @@
 import {
+  type ActivityEventResponse,
+  ActivityService,
   type CreateTicketRequest,
   type LabelResponse,
   LabelsService,
   type PagedResponseTicketResponse,
   type TicketResponse,
   TicketsService,
+  type TransitionRequest,
+  type UpdateTicketRequest,
 } from './generated';
 
 /**
@@ -121,6 +125,10 @@ export const ticketKeys = {
       },
     ] as const,
   labels: (projectId: string) => [...ticketKeys.all, projectId, 'labels'] as const,
+  // T-021 detail view. Keyed by the ROUTE identifier (idOrKey, e.g. ENG-42) since
+  // that is what is available at mount; the HTTP calls below use the resolved UUID.
+  detail: (idOrKey: string) => [...ticketKeys.all, 'detail', idOrKey] as const,
+  activity: (idOrKey: string) => [...ticketKeys.all, 'detail', idOrKey, 'activity'] as const,
 };
 
 export async function listTickets(projectId: string, filters: TicketFilters): Promise<TicketPage> {
@@ -148,4 +156,97 @@ export async function createTicket(projectId: string, req: CreateTicketRequest):
 
 export async function listLabels(projectId: string): Promise<Label[]> {
   return (await LabelsService.listProjectLabels(projectId)).map(toLabel);
+}
+
+/* ───────────────────────── T-021: ticket detail ───────────────────────── */
+
+/**
+ * The 12 known activity event types (template-literal over the generated enum so
+ * they track codegen). The wire may carry an unknown/future value, so
+ * {@link ActivityEvent.eventType} is a raw string — consumers fall back safely.
+ */
+export type ActivityEventType = `${NonNullable<ActivityEventResponse['eventType']>}`;
+
+export interface ActivityEvent {
+  id: string;
+  ticketId: string;
+  /** Raw event type; one of {@link ActivityEventType} or an unknown/future value. */
+  eventType: string;
+  /** null = system / no actor; undefined = actor omitted; otherwise a user UUID. */
+  actorId?: string | null;
+  createdAt: string;
+  /** Event-type-specific payload (e.g. {from,to} or {added,removed}). */
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Normalizes a generated ActivityEventResponse. Every field is optional on the
+ * wire; this never throws. NB the generated `payload` is typed as Jackson's
+ * JsonNode reflection shape (a springdoc quirk) but at runtime is the real JSON
+ * object, hence the unknown-bridge cast.
+ */
+export function toActivityEvent(raw: ActivityEventResponse): ActivityEvent {
+  const payload =
+    raw.payload && typeof raw.payload === 'object'
+      ? (raw.payload as unknown as Record<string, unknown>)
+      : {};
+  return {
+    id: raw.id ?? '',
+    ticketId: raw.ticketId ?? '',
+    eventType: raw.eventType ? String(raw.eventType) : 'UNKNOWN',
+    actorId: raw.actorId,
+    createdAt: raw.createdAt ?? '',
+    payload,
+  };
+}
+
+/**
+ * Patch for {@link updateTicket}. `assigneeId: null` expresses an explicit
+ * unassign — the generated UpdateTicketRequest types it as `string` only, so the
+ * call casts. (Backend null-vs-absent semantics tracked as a backlog item.)
+ */
+export interface TicketPatch {
+  title?: string;
+  description?: string;
+  priority?: TicketPriority;
+  assigneeId?: string | null;
+}
+
+/** Fetch a single ticket by UUID id or display key (e.g. ENG-42). */
+export async function getTicket(idOrKey: string): Promise<Ticket> {
+  return toTicket(await TicketsService.getTicket(idOrKey));
+}
+
+/**
+ * PATCH a ticket's fields (title/description/priority/assignee). Status is NOT
+ * changed here — use {@link transitionTicket}. Takes the ticket UUID (the PATCH
+ * endpoint binds @PathVariable UUID, not the display key).
+ */
+export async function updateTicket(ticketId: string, patch: TicketPatch): Promise<Ticket> {
+  return toTicket(await TicketsService.updateTicket(ticketId, patch as UpdateTicketRequest));
+}
+
+/**
+ * Transition a ticket's status (POST /transition — publishes an event + writes an
+ * activity row; NOT a PATCH). Takes the ticket UUID.
+ */
+export async function transitionTicket(ticketId: string, toStatus: TicketStatus): Promise<Ticket> {
+  return toTicket(
+    await TicketsService.transitionTicket(ticketId, { toStatus } as TransitionRequest)
+  );
+}
+
+/** Replace a ticket's full label set (PUT, idempotent). Takes the ticket UUID. */
+export async function setTicketLabels(ticketId: string, labelIds: string[]): Promise<Ticket> {
+  return toTicket(await TicketsService.setTicketLabels(ticketId, { labelIds }));
+}
+
+/** List a ticket's activity (newest first). Takes the ticket UUID; pinned page/size. */
+export async function listTicketActivity(
+  ticketId: string,
+  page = 0,
+  size = 20
+): Promise<ActivityEvent[]> {
+  const res = await ActivityService.listTicketActivity(ticketId, page, size);
+  return (res.items ?? []).map(toActivityEvent);
 }

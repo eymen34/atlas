@@ -44,6 +44,8 @@ export interface Member {
   role: ProjectRole;
   invitedBy?: string;
   createdAt: string;
+  /** Not currently sent by the backend; reserved for actor avatars (T-021). */
+  avatarUrl?: string;
 }
 
 /** Total over the role enum: anything that is not exactly ADMIN is MEMBER. */

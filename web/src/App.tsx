@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import TicketDetailPage from './pages/TicketDetailPage';
 import { BoardPage } from './pages/project/BoardPage';
 import { ListPage } from './pages/project/ListPage';
 import { MembersPage } from './pages/project/MembersPage';
@@ -45,6 +46,12 @@ export function App() {
                   <Route path="members" element={<MembersPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>
+                {/* Ticket detail is a SIBLING of the project shell (own data fetch,
+                    no project outlet context), still inside ProtectedRoute+AppShell. */}
+                <Route
+                  path="/projects/:projectIdOrKey/tickets/:key"
+                  element={<TicketDetailPage />}
+                />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/projects" replace />} />
