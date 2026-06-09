@@ -11,6 +11,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import java.nio.charset.StandardCharsets;
@@ -71,9 +72,7 @@ class MeIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
     given()
         .contentType(ContentType.JSON)
         .body("{\"email\":\"" + EMAIL + "\",\"password\":\"" + PW + "\",\"displayName\":\"Alice\"}")

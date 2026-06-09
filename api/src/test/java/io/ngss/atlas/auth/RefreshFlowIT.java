@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -66,9 +67,7 @@ class RefreshFlowIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
     given()
         .contentType(ContentType.JSON)
         .body("{\"email\":\"" + EMAIL + "\",\"password\":\"" + PW + "\",\"displayName\":\"Alice\"}")

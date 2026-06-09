@@ -1,12 +1,12 @@
 package io.ngss.atlas.ticket;
 
+import io.ngss.atlas.common.PagedResponse;
 import io.ngss.atlas.domain.TicketPriority;
 import io.ngss.atlas.domain.TicketStatus;
 import io.ngss.atlas.security.CurrentUser;
 import io.ngss.atlas.ticket.dto.CreateTicketRequest;
 import io.ngss.atlas.ticket.dto.TicketResponse;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -28,19 +28,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Project-scoped ticket endpoints (T-017): create and list within a project. Both
- * require membership (non-member → 404, existence-leak prevention); authorization
- * is enforced in {@link TicketService} via ProjectAccessGuard. Ticket-scoped
- * operations (get/patch/transition/delete) live on {@link TicketController}.
- *
- * <p>Class-level {@code produces=application/json} keeps springdoc content types
- * concrete; the POST adds {@code consumes=application/json}.
+ * Project-scoped ticket endpoints (T-017): create and list within a project (T-018
+ * rebuilt list with multi-valued filters + offset pagination). Both require
+ * membership (non-member → 404). Ticket-scoped operations live on
+ * {@link TicketController}.
  */
 @RestController
 @RequestMapping(value = "/api/projects/{id}/tickets", produces = MediaType.APPLICATION_JSON_VALUE)
 @SecurityRequirement(name = "bearerAuth")
 @Tag(name = "tickets")
 public class ProjectTicketController {
+
+  private static final int MAX_PAGE_SIZE = 100;
 
   private final TicketService ticketService;
 
@@ -69,29 +68,33 @@ public class ProjectTicketController {
 
   @GetMapping
   @Operation(
-      operationId = "listTickets",
-      summary = "List a project's live tickets (any member)",
+      operationId = "listProjectTickets",
+      summary = "List a project's live tickets (any member), filtered and paged",
       description =
-          "Default sort is updated_at DESC. Optional filters status / assigneeId / priority "
-              + "compose. The q (search) and label params are accepted but currently ignored "
-              + "(reserved for T-018 / T-028).")
+          "status and priority are multi-valued (OR within each field). assigneeId is a single "
+              + "value: a UUID, or the literal 'unassigned' for tickets with no assignee. label is "
+              + "multi-valued with AND semantics — a ticket must carry EVERY requested label. q "
+              + "(search) is accepted but currently ignored (T-018 out of scope). Results are "
+              + "sorted updated_at DESC (id ASC tiebreaker) and paged: size is clamped to 1..100, "
+              + "page to >= 0.")
   @ApiResponses({
-    @ApiResponse(
-        responseCode = "200",
-        description = "Tickets listed",
-        content =
-            @Content(array = @ArraySchema(schema = @Schema(implementation = TicketResponse.class)))),
-    @ApiResponse(responseCode = "400", description = "Invalid filter value"),
+    @ApiResponse(responseCode = "200", description = "Tickets listed (paged envelope)"),
+    @ApiResponse(responseCode = "400", description = "Invalid filter or query parameter"),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
     @ApiResponse(responseCode = "404", description = "Project not found or caller is not a member")
   })
-  public ResponseEntity<List<TicketResponse>> list(
+  public ResponseEntity<PagedResponse<TicketResponse>> list(
       @PathVariable UUID id,
-      @RequestParam(required = false) TicketStatus status,
-      @RequestParam(required = false) UUID assigneeId,
-      @RequestParam(required = false) TicketPriority priority,
+      @RequestParam(required = false) List<TicketStatus> status,
+      @RequestParam(required = false) List<TicketPriority> priority,
+      @RequestParam(required = false) String assigneeId,
+      @RequestParam(required = false) List<UUID> label,
       @RequestParam(required = false) String q,
-      @RequestParam(required = false) String label) {
-    return ResponseEntity.ok(ticketService.list(id, status, assigneeId, priority, q, label));
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
+    int clampedSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+    int clampedPage = Math.max(0, page);
+    return ResponseEntity.ok(
+        ticketService.list(id, status, priority, assigneeId, label, q, clampedPage, clampedSize));
   }
 }

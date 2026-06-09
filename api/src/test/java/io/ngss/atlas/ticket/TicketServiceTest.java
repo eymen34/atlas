@@ -15,6 +15,8 @@ import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketPriority;
 import io.ngss.atlas.domain.TicketRepository;
 import io.ngss.atlas.domain.TicketStatus;
+import io.ngss.atlas.label.LabelRepository;
+import io.ngss.atlas.label.TicketLabelRepository;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.dto.CreateTicketRequest;
@@ -22,6 +24,7 @@ import io.ngss.atlas.ticket.dto.TicketResponse;
 import io.ngss.atlas.ticket.dto.TransitionRequest;
 import io.ngss.atlas.ticket.dto.UpdateTicketRequest;
 import io.ngss.atlas.ticket.event.TicketTransitionedEvent;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,8 +48,11 @@ class TicketServiceTest {
   @Mock TicketRepository ticketRepository;
   @Mock ProjectTicketCounterRepository counterRepository;
   @Mock ProjectRepository projectRepository;
+  @Mock LabelRepository labelRepository;
+  @Mock TicketLabelRepository ticketLabelRepository;
   @Mock ProjectAccessGuard guard;
   @Mock ApplicationEventPublisher eventPublisher;
+  @Mock EntityManager entityManager;
   @InjectMocks TicketService service;
 
   private static final UUID PROJECT = UUID.randomUUID();

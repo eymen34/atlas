@@ -12,6 +12,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.ngss.atlas.domain.ProjectMemberRepository;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
@@ -81,14 +82,7 @@ class ProjectAccessGuardCacheIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    // FK-ordered teardown (child → parent): tickets + counters reference projects.
-    jdbc.update("DELETE FROM tickets");
-    jdbc.update("DELETE FROM project_ticket_counters");
-    jdbc.update("DELETE FROM project_members");
-    jdbc.update("DELETE FROM projects");
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
 
     adminId = register("admin@example.com");
     adminToken = sign(adminId);

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.SignedJWT;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -63,9 +64,7 @@ class LogoutIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
   }
 
   @AfterEach

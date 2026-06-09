@@ -12,6 +12,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -86,9 +87,8 @@ class RegisterIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    // Deterministic isolation: empty the auth tables before each test.
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    // Deterministic isolation: empty all domain tables before each test.
+    BaseIT.cleanDatabase(jdbc);
   }
 
   @AfterEach
