@@ -1,6 +1,13 @@
 package io.ngss.atlas.ticket;
 
+import io.ngss.atlas.activity.ActivityEventWriter;
+import io.ngss.atlas.activity.payload.AssigneeChangedPayload;
+import io.ngss.atlas.activity.payload.CreatedPayload;
+import io.ngss.atlas.activity.payload.LabelsChangedPayload;
+import io.ngss.atlas.activity.payload.PriorityChangedPayload;
+import io.ngss.atlas.activity.payload.StatusChangedPayload;
 import io.ngss.atlas.common.PagedResponse;
+import io.ngss.atlas.domain.ActivityEventType;
 import io.ngss.atlas.domain.Label;
 import io.ngss.atlas.domain.Project;
 import io.ngss.atlas.domain.ProjectRepository;
@@ -23,9 +30,12 @@ import io.ngss.atlas.ticket.event.TicketTransitionedEvent;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -66,6 +76,7 @@ public class TicketService {
   private final ProjectAccessGuard guard;
   private final ApplicationEventPublisher eventPublisher;
   private final EntityManager entityManager;
+  private final ActivityEventWriter activityWriter;
 
   public TicketService(
       TicketRepository ticketRepository,
@@ -75,7 +86,8 @@ public class TicketService {
       TicketLabelRepository ticketLabelRepository,
       ProjectAccessGuard guard,
       ApplicationEventPublisher eventPublisher,
-      EntityManager entityManager) {
+      EntityManager entityManager,
+      ActivityEventWriter activityWriter) {
     this.ticketRepository = ticketRepository;
     this.counterRepository = counterRepository;
     this.projectRepository = projectRepository;
@@ -84,6 +96,7 @@ public class TicketService {
     this.guard = guard;
     this.eventPublisher = eventPublisher;
     this.entityManager = entityManager;
+    this.activityWriter = activityWriter;
   }
 
   // ───────────────────────── create ─────────────────────────
@@ -112,6 +125,13 @@ public class TicketService {
             now,
             null);
     ticketRepository.save(ticket);
+    // Activity: append a CREATED row in THIS transaction (atomic with the insert).
+    activityWriter.record(
+        ticket.getId(),
+        callerId,
+        ActivityEventType.CREATED,
+        new CreatedPayload(ticket.getTitle(), ticket.getStatus(), ticket.getPriority()),
+        now);
     // A freshly created ticket has no labels yet.
     return TicketResponse.from(ticket, project.getKey(), List.of());
   }
@@ -198,21 +218,44 @@ public class TicketService {
   // ───────────────────────── update (PATCH) ─────────────────────────
 
   @Transactional
-  public TicketResponse update(UUID ticketId, UpdateTicketRequest req) {
+  public TicketResponse update(UUID ticketId, UpdateTicketRequest req, UUID callerId) {
     Ticket ticket = loadLiveTicket(ticketId);
     guard.requireMember(ticket.getProjectId());
 
     if (req.title() != null && req.title().isBlank()) {
       throw new TicketValidationException("title must not be blank");
     }
+    // Capture pre-change values for activity logging. title/description edits are
+    // intentionally NOT logged (T-019 design decision) — only assignee/priority.
+    UUID oldAssignee = ticket.getAssigneeId();
+    TicketPriority oldPriority = ticket.getPriority();
+
     String newTitle = req.title() != null ? req.title() : ticket.getTitle();
     String newDescription =
         req.description() != null ? req.description() : ticket.getDescription();
     UUID newAssignee = req.assigneeId() != null ? req.assigneeId() : ticket.getAssigneeId();
     TicketPriority newPriority = req.priority() != null ? req.priority() : ticket.getPriority();
 
-    ticket.updateFields(newTitle, newDescription, newAssignee, newPriority, Instant.now());
+    Instant now = Instant.now();
+    ticket.updateFields(newTitle, newDescription, newAssignee, newPriority, now);
     ticketRepository.save(ticket);
+
+    if (!Objects.equals(oldAssignee, ticket.getAssigneeId())) {
+      activityWriter.record(
+          ticket.getId(),
+          callerId,
+          ActivityEventType.ASSIGNEE_CHANGED,
+          new AssigneeChangedPayload(oldAssignee, ticket.getAssigneeId()),
+          now);
+    }
+    if (oldPriority != ticket.getPriority()) {
+      activityWriter.record(
+          ticket.getId(),
+          callerId,
+          ActivityEventType.PRIORITY_CHANGED,
+          new PriorityChangedPayload(oldPriority, ticket.getPriority()),
+          now);
+    }
     // Mutation responses do not re-read associations (T-018 contract).
     return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
   }
@@ -236,9 +279,18 @@ public class TicketService {
     Instant now = Instant.now();
     ticket.transition(to, now);
     ticketRepository.save(ticket);
+    // T-024 fan-out event (consumed AFTER_COMMIT by notifications) — KEPT.
     eventPublisher.publishEvent(
         new TicketTransitionedEvent(
             ticket.getId(), ticket.getProjectId(), from, to, callerId, now));
+    // Activity: a STATUS_CHANGED row, written synchronously in THIS transaction
+    // (NOT via the event above) so it is atomic with the status change.
+    activityWriter.record(
+        ticket.getId(),
+        callerId,
+        ActivityEventType.STATUS_CHANGED,
+        new StatusChangedPayload(from, to),
+        now);
     return TicketResponse.from(ticket, projectKey, List.of());
   }
 
@@ -255,7 +307,8 @@ public class TicketService {
   // ───────────────────────── set labels (full replace) ─────────────────────────
 
   @Transactional
-  public TicketResponse setTicketLabels(UUID ticketId, List<UUID> requestedLabelIds) {
+  public TicketResponse setTicketLabels(
+      UUID ticketId, List<UUID> requestedLabelIds, UUID callerId) {
     Ticket ticket = loadLiveTicket(ticketId);
     guard.requireMember(ticket.getProjectId());
 
@@ -273,6 +326,9 @@ public class TicketService {
       }
     }
 
+    // Snapshot the current label set BEFORE replacing, for the LABELS_CHANGED delta.
+    Set<UUID> oldLabelIds = new HashSet<>(currentLabelIds(ticketId));
+
     // Concurrent PUTs to the same ticket use last-writer-wins semantics; SELECT FOR
     // UPDATE not implemented in this ticket.
     ticketLabelRepository.deleteByTicketId(ticketId);
@@ -280,6 +336,18 @@ public class TicketService {
     Instant now = Instant.now();
     for (UUID labelId : distinctIds) {
       ticketLabelRepository.save(new TicketLabel(ticketId, labelId, now));
+    }
+
+    // Activity: log only a real change. A no-op replace (added+removed empty) → 0 rows.
+    List<UUID> added = distinctIds.stream().filter(id -> !oldLabelIds.contains(id)).toList();
+    List<UUID> removed = oldLabelIds.stream().filter(id -> !distinctIds.contains(id)).toList();
+    if (!added.isEmpty() || !removed.isEmpty()) {
+      activityWriter.record(
+          ticket.getId(),
+          callerId,
+          ActivityEventType.LABELS_CHANGED,
+          new LabelsChangedPayload(added, removed),
+          now);
     }
 
     return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), distinctIds);

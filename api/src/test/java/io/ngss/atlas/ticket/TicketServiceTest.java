@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.ngss.atlas.activity.ActivityEventWriter;
 import io.ngss.atlas.domain.Project;
 import io.ngss.atlas.domain.ProjectRepository;
 import io.ngss.atlas.domain.ProjectTicketCounterRepository;
@@ -53,6 +54,7 @@ class TicketServiceTest {
   @Mock ProjectAccessGuard guard;
   @Mock ApplicationEventPublisher eventPublisher;
   @Mock EntityManager entityManager;
+  @Mock ActivityEventWriter activityWriter;
   @InjectMocks TicketService service;
 
   private static final UUID PROJECT = UUID.randomUUID();
@@ -173,7 +175,7 @@ class TicketServiceTest {
         .thenReturn(Optional.of(ticket(ticketId, 1, TicketStatus.TODO)));
 
     assertThatThrownBy(
-            () -> service.update(ticketId, new UpdateTicketRequest("   ", null, null, null)))
+            () -> service.update(ticketId, new UpdateTicketRequest("   ", null, null, null), CALLER))
         .isInstanceOf(TicketValidationException.class);
     verify(guard).requireMember(PROJECT);
     verify(ticketRepository, never()).save(any());
@@ -187,7 +189,7 @@ class TicketServiceTest {
     when(projectRepository.findById(PROJECT)).thenReturn(Optional.of(liveProject("ENG")));
 
     TicketResponse resp =
-        service.update(ticketId, new UpdateTicketRequest(null, null, null, null));
+        service.update(ticketId, new UpdateTicketRequest(null, null, null, null), CALLER);
 
     assertThat(resp.title()).isEqualTo("Title");
     assertThat(resp.description()).isEqualTo("Desc");

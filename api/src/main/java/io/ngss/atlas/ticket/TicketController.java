@@ -85,7 +85,7 @@ public class TicketController {
   })
   public ResponseEntity<TicketResponse> update(
       @PathVariable UUID id, @Valid @RequestBody UpdateTicketRequest req) {
-    return ResponseEntity.ok(ticketService.update(id, req));
+    return ResponseEntity.ok(ticketService.update(id, req, CurrentUser.id()));
   }
 
   @PostMapping(value = "/{id}/transition", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -128,7 +128,7 @@ public class TicketController {
   })
   public ResponseEntity<TicketResponse> setLabels(
       @PathVariable UUID id, @Valid @RequestBody SetTicketLabelsRequest req) {
-    return ResponseEntity.ok(ticketService.setTicketLabels(id, req.labelIds()));
+    return ResponseEntity.ok(ticketService.setTicketLabels(id, req.labelIds(), CurrentUser.id()));
   }
 
   @DeleteMapping("/{id}")

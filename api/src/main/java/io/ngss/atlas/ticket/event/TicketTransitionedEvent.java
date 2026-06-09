@@ -6,12 +6,14 @@ import java.util.UUID;
 
 /**
  * Application event published when a ticket's status actually changes (T-017).
- * Plain record — NOT a JPA entity. Published via Spring's
- * {@code ApplicationEventPublisher} inside the transition transaction.
+ * Plain record — NOT a JPA entity. Published synchronously inside
+ * {@code TicketService.transition()} AFTER the entity save.
  *
- * <p>Bridge to T-019 (activity log): T-017 only PUBLISHES the event; no listener
- * exists yet. Publishing with no listener is a no-op in Spring, so this is
- * feature-flag-safe. A same-status (no-op) transition does NOT publish.
+ * <p>This event is for the notification fan-out (T-024), which will consume it
+ * AFTER_COMMIT. Activity-log rows are NOT written via this event — they are written
+ * synchronously by {@code ActivityEventWriter} inside the SAME transaction (T-019)
+ * to preserve atomicity with the status change. A same-status (no-op) transition
+ * publishes nothing and records no activity.
  *
  * @param ticketId the ticket whose status changed
  * @param projectId the ticket's project (denormalized so a listener need not reload)

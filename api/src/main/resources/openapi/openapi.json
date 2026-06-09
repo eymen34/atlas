@@ -1366,6 +1366,76 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/tickets/{id}/activity" : {
+      "get" : {
+        "description" : "Paged: size is clamped to 1..100, page to >= 0. Items are ordered created_at DESC. Each item's payload is a structured JSON object whose shape depends on eventType.",
+        "operationId" : "listTicketActivity",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseActivityEventResponse"
+                }
+              }
+            },
+            "description" : "Activity listed (paged envelope)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseActivityEventResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseActivityEventResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a ticket's activity log, newest first (any member)",
+        "tags" : [ "activity" ]
+      }
+    },
     "/api/tickets/{id}/labels" : {
       "put" : {
         "description" : "Full idempotent replace: the supplied labelIds become the ticket's complete label set (an empty list clears all). Every id must be a live label in the ticket's own project (else 400). Duplicate ids are de-duplicated.",
@@ -1555,7 +1625,36 @@
   },
   "components" : {
     "schemas" : {
+      "ActivityEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "actorId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "eventType" : {
+            "type" : "string",
+            "enum" : [ "CREATED", "STATUS_CHANGED", "ASSIGNEE_CHANGED", "PRIORITY_CHANGED", "LABELS_CHANGED", "COMMENT_ADDED", "COMMENT_EDITED", "COMMENT_DELETED", "ATTACHMENT_ADDED", "ATTACHMENT_REMOVED", "LINK_ADDED", "LINK_REMOVED" ]
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "payload" : {
+            "$ref" : "#/components/schemas/JsonNode"
+          },
+          "ticketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
       "AddMemberRequest" : {
+        "required" : [ "email", "role" ],
         "type" : "object",
         "properties" : {
           "email" : {
@@ -1565,8 +1664,7 @@
             "type" : "string",
             "enum" : [ "MEMBER", "ADMIN" ]
           }
-        },
-        "required" : [ "email", "role" ]
+        }
       },
       "AuthResponse" : {
         "type" : "object",
@@ -1584,6 +1682,7 @@
         }
       },
       "CreateLabelRequest" : {
+        "required" : [ "name" ],
         "type" : "object",
         "properties" : {
           "color" : {
@@ -1595,10 +1694,10 @@
             "minLength" : 0,
             "type" : "string"
           }
-        },
-        "required" : [ "name" ]
+        }
       },
       "CreateProjectRequest" : {
+        "required" : [ "key", "name" ],
         "type" : "object",
         "properties" : {
           "description" : {
@@ -1615,10 +1714,10 @@
             "minLength" : 0,
             "type" : "string"
           }
-        },
-        "required" : [ "key", "name" ]
+        }
       },
       "CreateTicketRequest" : {
+        "required" : [ "title" ],
         "type" : "object",
         "properties" : {
           "assigneeId" : {
@@ -1639,8 +1738,87 @@
             "minLength" : 0,
             "type" : "string"
           }
+        }
+      },
+      "JsonNode" : {
+        "type" : "object",
+        "properties" : {
+          "array" : {
+            "type" : "boolean"
+          },
+          "bigDecimal" : {
+            "type" : "boolean"
+          },
+          "bigInteger" : {
+            "type" : "boolean"
+          },
+          "binary" : {
+            "type" : "boolean"
+          },
+          "boolean" : {
+            "type" : "boolean"
+          },
+          "container" : {
+            "type" : "boolean"
+          },
+          "double" : {
+            "type" : "boolean"
+          },
+          "embeddedValue" : {
+            "type" : "boolean"
+          },
+          "empty" : {
+            "type" : "boolean"
+          },
+          "float" : {
+            "type" : "boolean"
+          },
+          "floatingPointNumber" : {
+            "type" : "boolean"
+          },
+          "int" : {
+            "type" : "boolean"
+          },
+          "integralNumber" : {
+            "type" : "boolean"
+          },
+          "long" : {
+            "type" : "boolean"
+          },
+          "missingNode" : {
+            "type" : "boolean"
+          },
+          "nodeType" : {
+            "type" : "string",
+            "enum" : [ "ARRAY", "BINARY", "BOOLEAN", "MISSING", "NULL", "NUMBER", "OBJECT", "POJO", "STRING" ]
+          },
+          "null" : {
+            "type" : "boolean"
+          },
+          "number" : {
+            "type" : "boolean"
+          },
+          "object" : {
+            "type" : "boolean"
+          },
+          "pojo" : {
+            "type" : "boolean"
+          },
+          "short" : {
+            "type" : "boolean"
+          },
+          "string" : {
+            "type" : "boolean"
+          },
+          "textual" : {
+            "type" : "boolean",
+            "deprecated" : true
+          },
+          "valueNode" : {
+            "type" : "boolean"
+          }
         },
-        "required" : [ "title" ]
+        "description" : "Structured, event-type-specific payload. CREATED={title,status,priority}; STATUS_CHANGED={from,to}; ASSIGNEE_CHANGED={from,to} (nullable UUIDs); PRIORITY_CHANGED={from,to}; LABELS_CHANGED={added:[UUID],removed:[UUID]}."
       },
       "LabelResponse" : {
         "type" : "object",
@@ -1666,6 +1844,7 @@
         }
       },
       "LoginRequest" : {
+        "required" : [ "email", "password" ],
         "type" : "object",
         "properties" : {
           "email" : {
@@ -1674,17 +1853,16 @@
           "password" : {
             "type" : "string"
           }
-        },
-        "required" : [ "email", "password" ]
+        }
       },
       "LogoutRequest" : {
+        "required" : [ "refreshToken" ],
         "type" : "object",
         "properties" : {
           "refreshToken" : {
             "type" : "string"
           }
-        },
-        "required" : [ "refreshToken" ]
+        }
       },
       "MemberResponse" : {
         "type" : "object",
@@ -1710,6 +1888,29 @@
           "userId" : {
             "type" : "string",
             "format" : "uuid"
+          }
+        }
+      },
+      "PagedResponseActivityEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ActivityEventResponse"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
       },
@@ -1775,15 +1976,16 @@
         }
       },
       "RefreshRequest" : {
+        "required" : [ "refreshToken" ],
         "type" : "object",
         "properties" : {
           "refreshToken" : {
             "type" : "string"
           }
-        },
-        "required" : [ "refreshToken" ]
+        }
       },
       "RegisterRequest" : {
+        "required" : [ "displayName", "email", "password" ],
         "type" : "object",
         "properties" : {
           "displayName" : {
@@ -1800,10 +2002,10 @@
             "type" : "string",
             "writeOnly" : true
           }
-        },
-        "required" : [ "displayName", "email", "password" ]
+        }
       },
       "SetTicketLabelsRequest" : {
+        "required" : [ "labelIds" ],
         "type" : "object",
         "properties" : {
           "labelIds" : {
@@ -1813,8 +2015,7 @@
               "format" : "uuid"
             }
           }
-        },
-        "required" : [ "labelIds" ]
+        }
       },
       "TicketResponse" : {
         "type" : "object",
@@ -1874,14 +2075,14 @@
         }
       },
       "TransitionRequest" : {
+        "required" : [ "toStatus" ],
         "type" : "object",
         "properties" : {
           "toStatus" : {
             "type" : "string",
             "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
           }
-        },
-        "required" : [ "toStatus" ]
+        }
       },
       "UpdateLabelRequest" : {
         "type" : "object",
@@ -1898,14 +2099,14 @@
         }
       },
       "UpdateMemberRoleRequest" : {
+        "required" : [ "role" ],
         "type" : "object",
         "properties" : {
           "role" : {
             "type" : "string",
             "enum" : [ "MEMBER", "ADMIN" ]
           }
-        },
-        "required" : [ "role" ]
+        }
       },
       "UpdateProjectRequest" : {
         "type" : "object",
