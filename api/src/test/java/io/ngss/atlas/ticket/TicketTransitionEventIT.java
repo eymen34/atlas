@@ -3,6 +3,7 @@ package io.ngss.atlas.ticket;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.ngss.atlas.domain.TicketStatus;
 import io.ngss.atlas.ticket.dto.TransitionRequest;
 import io.ngss.atlas.ticket.event.TicketTransitionedEvent;
@@ -79,13 +80,7 @@ class TicketTransitionEventIT {
 
   @BeforeEach
   void setUp() {
-    jdbc.update("DELETE FROM tickets");
-    jdbc.update("DELETE FROM project_ticket_counters");
-    jdbc.update("DELETE FROM project_members");
-    jdbc.update("DELETE FROM projects");
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
 
     userA = UUID.randomUUID();
     projectId = UUID.randomUUID();

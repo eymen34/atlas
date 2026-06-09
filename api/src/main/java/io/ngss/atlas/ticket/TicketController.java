@@ -1,5 +1,6 @@
 package io.ngss.atlas.ticket;
 
+import io.ngss.atlas.label.dto.SetTicketLabelsRequest;
 import io.ngss.atlas.security.CurrentUser;
 import io.ngss.atlas.ticket.dto.TicketResponse;
 import io.ngss.atlas.ticket.dto.TransitionRequest;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -105,6 +107,28 @@ public class TicketController {
   public ResponseEntity<TicketResponse> transition(
       @PathVariable UUID id, @Valid @RequestBody TransitionRequest req) {
     return ResponseEntity.ok(ticketService.transition(id, req, CurrentUser.id()));
+  }
+
+  @PutMapping(value = "/{id}/labels", consumes = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(
+      operationId = "setTicketLabels",
+      summary = "Replace a ticket's labels (any member)",
+      description =
+          "Full idempotent replace: the supplied labelIds become the ticket's complete label set "
+              + "(an empty list clears all). Every id must be a live label in the ticket's own "
+              + "project (else 400). Duplicate ids are de-duplicated.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Labels replaced",
+        content = @Content(schema = @Schema(implementation = TicketResponse.class))),
+    @ApiResponse(responseCode = "400", description = "Validation error or cross-project label"),
+    @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
+    @ApiResponse(responseCode = "404", description = "Ticket not found or caller is not a member")
+  })
+  public ResponseEntity<TicketResponse> setLabels(
+      @PathVariable UUID id, @Valid @RequestBody SetTicketLabelsRequest req) {
+    return ResponseEntity.ok(ticketService.setTicketLabels(id, req.labelIds()));
   }
 
   @DeleteMapping("/{id}")

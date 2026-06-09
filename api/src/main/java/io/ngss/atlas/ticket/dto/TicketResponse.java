@@ -4,15 +4,17 @@ import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketPriority;
 import io.ngss.atlas.domain.TicketStatus;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Response body for ticket endpoints (also used for list elements).
  *
  * <p>{@code key} is the human-facing display key {@code "{PROJECT_KEY}-{number}"}
- * (e.g. {@code ENG-42}). It is COMPUTED, never stored: the project key lives on
- * {@code projects}, the number on {@code tickets}. Soft-delete state is never
- * exposed.
+ * (e.g. {@code ENG-42}) — COMPUTED, never stored. {@code labelIds} (T-018) is a
+ * lightweight list of attached label ids: populated on the list (batch-loaded) and
+ * detail GET; emitted as empty on create/update/transition responses (those paths
+ * do not re-read associations). Soft-delete state is never exposed.
  */
 public record TicketResponse(
     UUID id,
@@ -26,9 +28,10 @@ public record TicketResponse(
     UUID assigneeId,
     UUID reporterId,
     Instant createdAt,
-    Instant updatedAt) {
+    Instant updatedAt,
+    List<UUID> labelIds) {
 
-  public static TicketResponse from(Ticket t, String projectKey) {
+  public static TicketResponse from(Ticket t, String projectKey, List<UUID> labelIds) {
     return new TicketResponse(
         t.getId(),
         projectKey + "-" + t.getNumber(),
@@ -41,6 +44,7 @@ public record TicketResponse(
         t.getAssigneeId(),
         t.getReporterId(),
         t.getCreatedAt(),
-        t.getUpdatedAt());
+        t.getUpdatedAt(),
+        labelIds);
   }
 }

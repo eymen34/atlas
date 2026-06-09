@@ -3,6 +3,10 @@ package io.ngss.atlas.error;
 import io.ngss.atlas.auth.ForbiddenTokenAccessException;
 import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
+import io.ngss.atlas.label.CrossProjectLabelException;
+import io.ngss.atlas.label.DuplicateLabelNameException;
+import io.ngss.atlas.label.LabelNotFoundException;
+import io.ngss.atlas.label.LabelValidationException;
 import io.ngss.atlas.project.DuplicateMemberException;
 import io.ngss.atlas.project.DuplicateProjectKeyException;
 import io.ngss.atlas.project.ForbiddenProjectAccessException;
@@ -11,6 +15,7 @@ import io.ngss.atlas.project.MemberNotFoundException;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.project.ProjectValidationException;
 import io.ngss.atlas.project.UserNotFoundException;
+import io.ngss.atlas.ticket.InvalidQueryParamException;
 import io.ngss.atlas.ticket.TicketNotFoundException;
 import io.ngss.atlas.ticket.TicketValidationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -166,6 +171,43 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorBody> handleTicketValidation(
       TicketValidationException ex, HttpServletRequest request) {
     log.info("ticket validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(LabelNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleLabelNotFound(
+      LabelNotFoundException ex, HttpServletRequest request) {
+    // Missing label OR (post membership check) a label in a project the caller
+    // cannot see — uniform 404, no existence leak.
+    log.info("label not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Label not found", request);
+  }
+
+  @ExceptionHandler(DuplicateLabelNameException.class)
+  public ResponseEntity<ErrorBody> handleDuplicateLabelName(
+      DuplicateLabelNameException ex, HttpServletRequest request) {
+    log.info("label name conflict path={}", request.getRequestURI());
+    return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(LabelValidationException.class)
+  public ResponseEntity<ErrorBody> handleLabelValidation(
+      LabelValidationException ex, HttpServletRequest request) {
+    log.info("label validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(CrossProjectLabelException.class)
+  public ResponseEntity<ErrorBody> handleCrossProjectLabel(
+      CrossProjectLabelException ex, HttpServletRequest request) {
+    log.info("cross-project label rejected path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(InvalidQueryParamException.class)
+  public ResponseEntity<ErrorBody> handleInvalidQueryParam(
+      InvalidQueryParamException ex, HttpServletRequest request) {
+    log.info("invalid query parameter path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
   }
 

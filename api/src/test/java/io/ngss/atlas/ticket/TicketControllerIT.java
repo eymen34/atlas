@@ -14,6 +14,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -85,14 +86,7 @@ class TicketControllerIT {
   void setUp() {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    // FK-ordered teardown (child → parent).
-    jdbc.update("DELETE FROM tickets");
-    jdbc.update("DELETE FROM project_ticket_counters");
-    jdbc.update("DELETE FROM project_members");
-    jdbc.update("DELETE FROM projects");
-    jdbc.update("DELETE FROM refresh_tokens");
-    jdbc.update("DELETE FROM password_credentials");
-    jdbc.update("DELETE FROM users");
+    BaseIT.cleanDatabase(jdbc);
 
     userA = register("usera@example.com", "Alice");
     userB = register("userb@example.com", "Bob");
@@ -221,34 +215,39 @@ class TicketControllerIT {
     // Move t1 to IN_PROGRESS so the status filter distinguishes it.
     transition(tokenA, t1, "IN_PROGRESS").then().statusCode(200);
 
-    // All three live tickets.
+    // All three live tickets (T-018 PagedResponse envelope).
     given().header("Authorization", "Bearer " + tokenA).get("/api/projects/" + engId + "/tickets")
-        .then().statusCode(200).body("size()", equalTo(3));
+        .then().statusCode(200)
+        .body("items.size()", equalTo(3))
+        .body("total", equalTo(3))
+        .body("page", equalTo(0))
+        .body("size", equalTo(20))
+        .body("items[0].labelIds", notNullValue()); // labelIds always present (array)
 
     // status filter.
     given().header("Authorization", "Bearer " + tokenA)
         .get("/api/projects/" + engId + "/tickets?status=IN_PROGRESS")
-        .then().statusCode(200).body("size()", equalTo(1)).body("[0].title", equalTo("Plain"));
+        .then().statusCode(200).body("items.size()", equalTo(1)).body("items[0].title", equalTo("Plain"));
 
     // priority filter.
     given().header("Authorization", "Bearer " + tokenA)
         .get("/api/projects/" + engId + "/tickets?priority=P0")
-        .then().statusCode(200).body("size()", equalTo(1)).body("[0].title", equalTo("High"));
+        .then().statusCode(200).body("items.size()", equalTo(1)).body("items[0].title", equalTo("High"));
 
     // assignee filter.
     given().header("Authorization", "Bearer " + tokenA)
         .get("/api/projects/" + engId + "/tickets?assigneeId=" + userA)
-        .then().statusCode(200).body("size()", equalTo(1)).body("[0].title", equalTo("Assigned"));
+        .then().statusCode(200).body("items.size()", equalTo(1)).body("items[0].title", equalTo("Assigned"));
 
-    // q and label are accepted without error (no-op stubs).
+    // q is accepted without error (no-op stub; T-018 out of scope).
     given().header("Authorization", "Bearer " + tokenA)
-        .get("/api/projects/" + engId + "/tickets?q=anything&label=bug")
-        .then().statusCode(200).body("size()", equalTo(3));
+        .get("/api/projects/" + engId + "/tickets?q=anything")
+        .then().statusCode(200).body("items.size()", equalTo(3));
 
     // Soft-delete t1 → excluded.
     given().header("Authorization", "Bearer " + tokenA).delete("/api/tickets/" + t1).then().statusCode(204);
     given().header("Authorization", "Bearer " + tokenA).get("/api/projects/" + engId + "/tickets")
-        .then().statusCode(200).body("size()", equalTo(2));
+        .then().statusCode(200).body("items.size()", equalTo(2)).body("total", equalTo(2));
   }
 
   @Test
@@ -264,7 +263,7 @@ class TicketControllerIT {
         .body("{\"title\":\"One-edited\"}").patch("/api/tickets/" + t1).then().statusCode(200);
 
     given().header("Authorization", "Bearer " + tokenA).get("/api/projects/" + engId + "/tickets")
-        .then().statusCode(200).body("[0].title", equalTo("One-edited"));
+        .then().statusCode(200).body("items[0].title", equalTo("One-edited"));
   }
 
   @Test

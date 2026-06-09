@@ -222,6 +222,119 @@
         "tags" : [ "auth" ]
       }
     },
+    "/api/labels/{id}" : {
+      "delete" : {
+        "operationId" : "deleteLabel",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Label deleted"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Caller is a member but not an ADMIN"
+          },
+          "404" : {
+            "description" : "Label not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Delete a label and detach it from all tickets (ADMIN only)",
+        "tags" : [ "labels" ]
+      },
+      "patch" : {
+        "description" : "Null/absent fields are left unchanged; supplying neither name nor color is a 400.",
+        "operationId" : "updateLabel",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateLabelRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Label updated"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Label not found or caller is not a member"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Label name already in use in this project"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Update a label's name and/or color (any member)",
+        "tags" : [ "labels" ]
+      }
+    },
     "/api/projects" : {
       "get" : {
         "operationId" : "list",
@@ -482,6 +595,145 @@
         } ],
         "summary" : "Partially update a project (ADMIN only)",
         "tags" : [ "projects" ]
+      }
+    },
+    "/api/projects/{id}/labels" : {
+      "get" : {
+        "operationId" : "listProjectLabels",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LabelResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Labels listed"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LabelResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LabelResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a project's labels (any member)",
+        "tags" : [ "labels" ]
+      },
+      "post" : {
+        "operationId" : "createProjectLabel",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateLabelRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Label created"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description" : "Label name already in use in this project"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Create a label in a project (any member)",
+        "tags" : [ "labels" ]
       }
     },
     "/api/projects/{id}/members" : {
@@ -766,8 +1018,8 @@
     },
     "/api/projects/{id}/tickets" : {
       "get" : {
-        "description" : "Default sort is updated_at DESC. Optional filters status / assigneeId / priority compose. The q (search) and label params are accepted but currently ignored (reserved for T-018 / T-028).",
-        "operationId" : "listTickets",
+        "description" : "status and priority are multi-valued (OR within each field). assigneeId is a single value: a UUID, or the literal 'unassigned' for tickets with no assignee. label is multi-valued with AND semantics — a ticket must carry EVERY requested label. q (search) is accepted but currently ignored (T-018 out of scope). Results are sorted updated_at DESC (id ASC tiebreaker) and paged: size is clamped to 1..100, page to >= 0.",
+        "operationId" : "listProjectTickets",
         "parameters" : [ {
           "in" : "path",
           "name" : "id",
@@ -781,24 +1033,40 @@
           "name" : "status",
           "required" : false,
           "schema" : {
-            "type" : "string",
-            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
-          }
-        }, {
-          "in" : "query",
-          "name" : "assigneeId",
-          "required" : false,
-          "schema" : {
-            "type" : "string",
-            "format" : "uuid"
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+            }
           }
         }, {
           "in" : "query",
           "name" : "priority",
           "required" : false,
           "schema" : {
-            "type" : "string",
-            "enum" : [ "P0", "P1", "P2", "P3" ]
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "P0", "P1", "P2", "P3" ]
+            }
+          }
+        }, {
+          "in" : "query",
+          "name" : "assigneeId",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "label",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
           }
         }, {
           "in" : "query",
@@ -809,10 +1077,21 @@
           }
         }, {
           "in" : "query",
-          "name" : "label",
+          "name" : "page",
           "required" : false,
           "schema" : {
-            "type" : "string"
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
           }
         } ],
         "responses" : {
@@ -820,36 +1099,27 @@
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/TicketResponse"
-                  }
+                  "$ref" : "#/components/schemas/PagedResponseTicketResponse"
                 }
               }
             },
-            "description" : "Tickets listed"
+            "description" : "Tickets listed (paged envelope)"
           },
           "400" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/TicketResponse"
-                  }
+                  "$ref" : "#/components/schemas/PagedResponseTicketResponse"
                 }
               }
             },
-            "description" : "Invalid filter value"
+            "description" : "Invalid filter or query parameter"
           },
           "401" : {
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/TicketResponse"
-                  }
+                  "$ref" : "#/components/schemas/PagedResponseTicketResponse"
                 }
               }
             },
@@ -859,10 +1129,7 @@
             "content" : {
               "application/json" : {
                 "schema" : {
-                  "type" : "array",
-                  "items" : {
-                    "$ref" : "#/components/schemas/TicketResponse"
-                  }
+                  "$ref" : "#/components/schemas/PagedResponseTicketResponse"
                 }
               }
             },
@@ -872,7 +1139,7 @@
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "List a project's live tickets (any member)",
+        "summary" : "List a project's live tickets (any member), filtered and paged",
         "tags" : [ "tickets" ]
       },
       "post" : {
@@ -1099,6 +1366,78 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/tickets/{id}/labels" : {
+      "put" : {
+        "description" : "Full idempotent replace: the supplied labelIds become the ticket's complete label set (an empty list clears all). Every id must be a live label in the ticket's own project (else 400). Duplicate ids are de-duplicated.",
+        "operationId" : "setTicketLabels",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SetTicketLabelsRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Labels replaced"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Validation error or cross-project label"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Replace a ticket's labels (any member)",
+        "tags" : [ "tickets" ]
+      }
+    },
     "/api/tickets/{id}/transition" : {
       "post" : {
         "description" : "Any status may transition to any other (MVP — no state-machine). A transition to the current status is a 200 no-op and publishes no event.",
@@ -1244,6 +1583,21 @@
           }
         }
       },
+      "CreateLabelRequest" : {
+        "type" : "object",
+        "properties" : {
+          "color" : {
+            "pattern" : "^#[0-9A-Fa-f]{6}$",
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "name" ]
+      },
       "CreateProjectRequest" : {
         "type" : "object",
         "properties" : {
@@ -1287,6 +1641,29 @@
           }
         },
         "required" : [ "title" ]
+      },
+      "LabelResponse" : {
+        "type" : "object",
+        "properties" : {
+          "color" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "projectId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
       },
       "LoginRequest" : {
         "type" : "object",
@@ -1333,6 +1710,29 @@
           "userId" : {
             "type" : "string",
             "format" : "uuid"
+          }
+        }
+      },
+      "PagedResponseTicketResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TicketResponse"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
       },
@@ -1403,6 +1803,19 @@
         },
         "required" : [ "displayName", "email", "password" ]
       },
+      "SetTicketLabelsRequest" : {
+        "type" : "object",
+        "properties" : {
+          "labelIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          }
+        },
+        "required" : [ "labelIds" ]
+      },
       "TicketResponse" : {
         "type" : "object",
         "properties" : {
@@ -1423,6 +1836,13 @@
           },
           "key" : {
             "type" : "string"
+          },
+          "labelIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
           },
           "number" : {
             "type" : "integer",
@@ -1462,6 +1882,20 @@
           }
         },
         "required" : [ "toStatus" ]
+      },
+      "UpdateLabelRequest" : {
+        "type" : "object",
+        "properties" : {
+          "color" : {
+            "pattern" : "^#[0-9A-Fa-f]{6}$",
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }
       },
       "UpdateMemberRoleRequest" : {
         "type" : "object",
