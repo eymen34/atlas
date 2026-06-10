@@ -2,7 +2,9 @@ package io.ngss.atlas.error;
 
 import io.ngss.atlas.auth.ForbiddenTokenAccessException;
 import io.ngss.atlas.auth.InvalidCredentialsException;
+import io.ngss.atlas.comment.CommentNotFoundException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
+import io.ngss.atlas.mention.HandleGenerationException;
 import io.ngss.atlas.label.CrossProjectLabelException;
 import io.ngss.atlas.label.DuplicateLabelNameException;
 import io.ngss.atlas.label.LabelNotFoundException;
@@ -172,6 +174,21 @@ public class GlobalExceptionHandler {
       TicketValidationException ex, HttpServletRequest request) {
     log.info("ticket validation failure path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(CommentNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleCommentNotFound(
+      CommentNotFoundException ex, HttpServletRequest request) {
+    // Missing OR already soft-deleted comment (edit/delete) — uniform 404, no leak.
+    log.info("comment not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Comment not found", request);
+  }
+
+  @ExceptionHandler(HandleGenerationException.class)
+  public ResponseEntity<ErrorBody> handleHandleGeneration(
+      HandleGenerationException ex, HttpServletRequest request) {
+    log.warn("mention-handle generation exhausted path={}", request.getRequestURI());
+    return build(HttpStatus.CONFLICT, "Could not generate a unique mention handle", request);
   }
 
   @ExceptionHandler(LabelNotFoundException.class)

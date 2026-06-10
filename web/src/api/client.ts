@@ -1,5 +1,6 @@
 import {
   AuthService,
+  CommentsService,
   LabelsService,
   ProjectMembersService,
   ProjectResponse,
@@ -144,3 +145,13 @@ export const _ticketListProbe: typeof TicketsService.listProjectTickets =
 export const _ticketCreateProbe: typeof TicketsService.createTicket = TicketsService.createTicket;
 export const _labelListProbe: typeof LabelsService.listProjectLabels =
   LabelsService.listProjectLabels;
+
+// T-022 compile-time probes: fail `tsc -b` if codegen drifts from the comment API.
+export const _createCommentProbe: typeof CommentsService.createComment =
+  CommentsService.createComment;
+export const _listCommentsProbe: typeof CommentsService.listComments =
+  CommentsService.listComments;
+export const _updateCommentProbe: typeof CommentsService.updateComment =
+  CommentsService.updateComment;
+export const _deleteCommentProbe: typeof CommentsService.deleteComment =
+  CommentsService.deleteComment;

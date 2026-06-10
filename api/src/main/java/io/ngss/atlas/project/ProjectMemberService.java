@@ -80,7 +80,8 @@ public class ProjectMemberService {
         user.getDisplayName(),
         member.getRole(),
         member.getInvitedBy(),
-        member.getCreatedAt());
+        member.getCreatedAt(),
+        user.getMentionHandle());
   }
 
   @Transactional
@@ -104,7 +105,8 @@ public class ProjectMemberService {
         user.getDisplayName(),
         target.getRole(),
         target.getInvitedBy(),
-        target.getCreatedAt());
+        target.getCreatedAt(),
+        user.getMentionHandle());
   }
 
   @Transactional

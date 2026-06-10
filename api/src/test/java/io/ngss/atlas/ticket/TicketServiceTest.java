@@ -55,6 +55,8 @@ class TicketServiceTest {
   @Mock ApplicationEventPublisher eventPublisher;
   @Mock EntityManager entityManager;
   @Mock ActivityEventWriter activityWriter;
+  @Mock io.ngss.atlas.mention.MentionParser mentionParser;
+  @Mock io.ngss.atlas.comment.TicketMentionRepository ticketMentionRepository;
   @InjectMocks TicketService service;
 
   private static final UUID PROJECT = UUID.randomUUID();

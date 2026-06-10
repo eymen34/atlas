@@ -6,6 +6,7 @@ import io.ngss.atlas.activity.payload.CreatedPayload;
 import io.ngss.atlas.activity.payload.LabelsChangedPayload;
 import io.ngss.atlas.activity.payload.PriorityChangedPayload;
 import io.ngss.atlas.activity.payload.StatusChangedPayload;
+import io.ngss.atlas.comment.TicketMentionRepository;
 import io.ngss.atlas.common.PagedResponse;
 import io.ngss.atlas.domain.ActivityEventType;
 import io.ngss.atlas.domain.Label;
@@ -15,11 +16,13 @@ import io.ngss.atlas.domain.ProjectTicketCounterRepository;
 import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketLabel;
 import io.ngss.atlas.domain.TicketPriority;
+import io.ngss.atlas.domain.TicketMention;
 import io.ngss.atlas.domain.TicketRepository;
 import io.ngss.atlas.domain.TicketStatus;
 import io.ngss.atlas.label.CrossProjectLabelException;
 import io.ngss.atlas.label.LabelRepository;
 import io.ngss.atlas.label.TicketLabelRepository;
+import io.ngss.atlas.mention.MentionParser;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.dto.CreateTicketRequest;
@@ -77,6 +80,8 @@ public class TicketService {
   private final ApplicationEventPublisher eventPublisher;
   private final EntityManager entityManager;
   private final ActivityEventWriter activityWriter;
+  private final MentionParser mentionParser;
+  private final TicketMentionRepository ticketMentionRepository;
 
   public TicketService(
       TicketRepository ticketRepository,
@@ -87,7 +92,9 @@ public class TicketService {
       ProjectAccessGuard guard,
       ApplicationEventPublisher eventPublisher,
       EntityManager entityManager,
-      ActivityEventWriter activityWriter) {
+      ActivityEventWriter activityWriter,
+      MentionParser mentionParser,
+      TicketMentionRepository ticketMentionRepository) {
     this.ticketRepository = ticketRepository;
     this.counterRepository = counterRepository;
     this.projectRepository = projectRepository;
@@ -97,6 +104,8 @@ public class TicketService {
     this.eventPublisher = eventPublisher;
     this.entityManager = entityManager;
     this.activityWriter = activityWriter;
+    this.mentionParser = mentionParser;
+    this.ticketMentionRepository = ticketMentionRepository;
   }
 
   // ───────────────────────── create ─────────────────────────
@@ -132,6 +141,10 @@ public class TicketService {
         ActivityEventType.CREATED,
         new CreatedPayload(ticket.getTitle(), ticket.getStatus(), ticket.getPriority()),
         now);
+    // T-022: a new ticket's HTML description may @mention project members.
+    if (req.description() != null) {
+      saveTicketMentions(ticket.getId(), mentionParser.parse(req.description(), projectId));
+    }
     // A freshly created ticket has no labels yet.
     return TicketResponse.from(ticket, project.getKey(), List.of());
   }
@@ -229,6 +242,7 @@ public class TicketService {
     // intentionally NOT logged (T-019 design decision) — only assignee/priority.
     UUID oldAssignee = ticket.getAssigneeId();
     TicketPriority oldPriority = ticket.getPriority();
+    String oldDescription = ticket.getDescription();
 
     String newTitle = req.title() != null ? req.title() : ticket.getTitle();
     String newDescription =
@@ -255,6 +269,15 @@ public class TicketService {
           ActivityEventType.PRIORITY_CHANGED,
           new PriorityChangedPayload(oldPriority, ticket.getPriority()),
           now);
+    }
+    // T-022: re-diff description @mentions only when the description is PRESENT in
+    // the request (req.description() != null) AND meaningfully changed — a null↔""
+    // or whitespace-only flip is a no-op and must not churn ticket_mentions.
+    if (req.description() != null && isMeaningfullyChanged(oldDescription, req.description())) {
+      ticketMentionRepository.deleteByTicketId(ticketId);
+      entityManager.flush();
+      saveTicketMentions(
+          ticketId, mentionParser.parse(req.description(), ticket.getProjectId()));
     }
     // Mutation responses do not re-read associations (T-018 contract).
     return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
@@ -389,5 +412,21 @@ public class TicketService {
     } catch (NumberFormatException overflow) {
       throw new TicketNotFoundException("ticket not found: " + idOrKey);
     }
+  }
+
+  /** Persists the resolved description @mention rows for a ticket (T-022). */
+  private void saveTicketMentions(UUID ticketId, Set<UUID> userIds) {
+    for (UUID userId : userIds) {
+      ticketMentionRepository.save(new TicketMention(ticketId, userId));
+    }
+  }
+
+  /** True when two descriptions differ once blank/whitespace is normalized to null. */
+  private static boolean isMeaningfullyChanged(String a, String b) {
+    return !Objects.equals(blankToNull(a), blankToNull(b));
+  }
+
+  private static String blankToNull(String s) {
+    return (s == null || s.isBlank()) ? null : s;
   }
 }

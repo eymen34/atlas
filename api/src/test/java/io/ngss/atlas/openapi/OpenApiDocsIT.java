@@ -211,6 +211,39 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t022CommentEndpointsAndMentionHandlePresent() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    // Four new endpoints with distinct, stable operationIds.
+    assertThat(paths.path("/api/tickets/{id}/comments").path("post").path("operationId").asString())
+        .isEqualTo("createComment");
+    assertThat(paths.path("/api/tickets/{id}/comments").path("get").path("operationId").asString())
+        .isEqualTo("listComments");
+    assertThat(paths.path("/api/comments/{id}").path("patch").path("operationId").asString())
+        .isEqualTo("updateComment");
+    assertThat(paths.path("/api/comments/{id}").path("delete").path("operationId").asString())
+        .isEqualTo("deleteComment");
+
+    // 403 documented on the edit/delete (author-or-admin) endpoints.
+    assertThat(paths.path("/api/comments/{id}").path("patch").path("responses").has("403")).isTrue();
+    assertThat(paths.path("/api/comments/{id}").path("delete").path("responses").has("403"))
+        .isTrue();
+
+    JsonNode schemas = root.get("components").get("schemas");
+    assertThat(schemas.has("CommentResponse")).as("CommentResponse schema").isTrue();
+    assertThat(schemas.has("CreateCommentRequest")).as("CreateCommentRequest schema").isTrue();
+    assertThat(schemas.has("UpdateCommentRequest")).as("UpdateCommentRequest schema").isTrue();
+
+    // mentionHandle is now part of the member-list contract.
+    assertThat(schemas.path("MemberResponse").path("properties").has("mentionHandle"))
+        .as("MemberResponse.mentionHandle")
+        .isTrue();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(

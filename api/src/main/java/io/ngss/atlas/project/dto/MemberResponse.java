@@ -15,4 +15,5 @@ public record MemberResponse(
     String displayName,
     ProjectRole role,
     UUID invitedBy,
-    Instant createdAt) {}
+    Instant createdAt,
+    String mentionHandle) {}

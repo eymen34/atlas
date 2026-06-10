@@ -1,14 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { apiErrorStatus } from '@/api/errors';
 import { listMembers, projectKeys } from '@/api/projects';
 import { listLabels, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
+import { CommentsSection } from '@/features/tickets/CommentsSection';
 import { useTicketActivity, useTicketDetail } from '@/features/tickets/hooks';
 import { TicketActivityTimeline } from '@/features/tickets/TicketActivityTimeline';
 import { TicketDescription } from '@/features/tickets/TicketDescription';
 import { TicketHeader } from '@/features/tickets/TicketHeader';
 import { TicketSidebar } from '@/features/tickets/TicketSidebar';
+import { useAuthStore } from '@/store/authStore';
 
 /**
  * Ticket detail page (T-021). A SIBLING of the project shell route — it fetches
@@ -38,8 +41,14 @@ export default function TicketDetailPage() {
   });
   const activityQuery = useTicketActivity(key, ticket?.id);
 
-  const members = membersQuery.data ?? [];
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]);
   const labels = labelsQuery.data ?? [];
+
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const isProjectAdmin = useMemo(
+    () => members.some((m) => m.userId === currentUserId && m.role === 'ADMIN'),
+    [members, currentUserId]
+  );
 
   if (ticketQuery.isLoading) {
     return (
@@ -82,7 +91,13 @@ export default function TicketDetailPage() {
         <div className="space-y-6">
           <TicketHeader idOrKey={key} ticket={ticket} />
           <TicketDescription idOrKey={key} ticket={ticket} />
-          {/* T-022: comment thread slot */}
+          <CommentsSection
+            ticketId={ticket.id}
+            idOrKey={key}
+            members={members}
+            currentUserId={currentUserId}
+            isProjectAdmin={isProjectAdmin}
+          />
           {/* T-025: attachment list slot */}
           {/* T-026: links slot */}
           <TicketActivityTimeline events={activityQuery.data ?? []} members={members} />

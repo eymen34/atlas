@@ -40,11 +40,12 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, UU
    * One-round-trip member listing: ad-hoc entity JOIN to {@code User} (no
    * association on the entity) projected straight into {@link MemberResponse}.
    * Constructor argument order/types MUST match the record exactly:
-   * (UUID, String, String, ProjectRole, UUID, Instant).
+   * (UUID, String, String, ProjectRole, UUID, Instant, String).
    */
   @Query(
       "SELECT new io.ngss.atlas.project.dto.MemberResponse("
-          + "pm.userId, u.email, u.displayName, pm.role, pm.invitedBy, pm.createdAt) "
+          + "pm.userId, u.email, u.displayName, pm.role, pm.invitedBy, pm.createdAt, "
+          + "u.mentionHandle) "
           + "FROM ProjectMember pm JOIN User u ON u.id = pm.userId "
           + "WHERE pm.projectId = :projectId "
           + "ORDER BY pm.createdAt ASC")
