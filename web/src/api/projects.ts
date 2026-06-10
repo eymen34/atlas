@@ -46,6 +46,8 @@ export interface Member {
   createdAt: string;
   /** Not currently sent by the backend; reserved for actor avatars (T-021). */
   avatarUrl?: string;
+  /** Global @mention handle (T-022), used by the comment composer's suggestions. */
+  mentionHandle: string;
 }
 
 /** Total over the role enum: anything that is not exactly ADMIN is MEMBER. */
@@ -74,6 +76,7 @@ interface RawMember {
   role?: unknown;
   invitedBy?: string;
   createdAt?: string;
+  mentionHandle?: string;
 }
 
 function toMember(m: RawMember): Member {
@@ -84,6 +87,8 @@ function toMember(m: RawMember): Member {
     role: asRole(m.role),
     invitedBy: m.invitedBy,
     createdAt: m.createdAt ?? '',
+    // Tolerant default, matching the existing mapper style (anchor: toMember uses ?? '').
+    mentionHandle: m.mentionHandle ?? '',
   };
 }
 

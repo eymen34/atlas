@@ -87,11 +87,12 @@ class TicketTransitionEventIT {
     ticketId = UUID.randomUUID();
 
     jdbc.update(
-        "INSERT INTO users (id, email, display_name, created_at, updated_at) "
-            + "VALUES (?::uuid,?,?,now(),now())",
+        "INSERT INTO users (id, email, display_name, mention_handle, created_at, updated_at) "
+            + "VALUES (?::uuid,?,?,?,now(),now())",
         userA.toString(),
         "usera@example.com",
-        "Alice");
+        "Alice",
+        "usera");
     jdbc.update(
         "INSERT INTO projects (id, key, name, created_by, created_at, updated_at) "
             + "VALUES (?::uuid,?,?,?::uuid,now(),now())",

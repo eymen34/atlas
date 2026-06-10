@@ -92,9 +92,9 @@ class ActivityEventInterplayIT {
     ticketId = UUID.randomUUID();
 
     jdbc.update(
-        "INSERT INTO users (id, email, display_name, created_at, updated_at) "
-            + "VALUES (?::uuid,?,?,now(),now())",
-        userA.toString(), "alice@example.com", "Alice");
+        "INSERT INTO users (id, email, display_name, mention_handle, created_at, updated_at) "
+            + "VALUES (?::uuid,?,?,?,now(),now())",
+        userA.toString(), "alice@example.com", "Alice", "alice");
     jdbc.update(
         "INSERT INTO projects (id, key, name, created_by, created_at, updated_at) "
             + "VALUES (?::uuid,?,?,?::uuid,now(),now())",

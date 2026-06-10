@@ -222,6 +222,120 @@
         "tags" : [ "auth" ]
       }
     },
+    "/api/comments/{id}" : {
+      "delete" : {
+        "description" : "Server-redacted soft delete: deleted_at is stamped, mention rows removed, a COMMENT_DELETED activity row written. A second delete → 404.",
+        "operationId" : "deleteComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Comment soft-deleted"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Caller is neither the author nor an ADMIN"
+          },
+          "404" : {
+            "description" : "Comment not found or already deleted"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Soft-delete a comment (author or project ADMIN)",
+        "tags" : [ "comments" ]
+      },
+      "patch" : {
+        "description" : "Replaces the full HTML body; mentions are re-derived server-side. Writes a COMMENT_EDITED activity row. Non-author non-admin → 403.",
+        "operationId" : "updateComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateCommentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Comment updated"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Caller is neither the author nor an ADMIN"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Comment not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Edit a comment (author or project ADMIN)",
+        "tags" : [ "comments" ]
+      }
+    },
     "/api/labels/{id}" : {
       "delete" : {
         "operationId" : "deleteLabel",
@@ -1436,6 +1550,146 @@
         "tags" : [ "activity" ]
       }
     },
+    "/api/tickets/{id}/comments" : {
+      "get" : {
+        "description" : "Paged (size clamped 1..100). Soft-deleted comments are returned with body=null and deleted=true (server-redacted), keeping their place.",
+        "operationId" : "listComments",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseCommentResponse"
+                }
+              }
+            },
+            "description" : "Comments listed (paged envelope)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseCommentResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseCommentResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a ticket's comments, newest first (any member)",
+        "tags" : [ "comments" ]
+      },
+      "post" : {
+        "description" : "Body is HTML (TipTap). @mentions are resolved SERVER-side against the ticket's project membership; the client's mention metadata is ignored. Writes a COMMENT_ADDED activity row atomically.",
+        "operationId" : "createComment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateCommentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Comment created"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Validation error"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CommentResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Add a comment to a ticket (any member)",
+        "tags" : [ "comments" ]
+      }
+    },
     "/api/tickets/{id}/labels" : {
       "put" : {
         "description" : "Full idempotent replace: the supplied labelIds become the ticket's complete label set (an empty list clears all). Every id must be a live label in the ticket's own project (else 400). Duplicate ids are de-duplicated.",
@@ -1681,6 +1935,55 @@
           }
         }
       },
+      "CommentResponse" : {
+        "type" : "object",
+        "properties" : {
+          "authorId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "body" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "deleted" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "mentionedUserIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "ticketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "CreateCommentRequest" : {
+        "required" : [ "body" ],
+        "type" : "object",
+        "properties" : {
+          "body" : {
+            "maxLength" : 16384,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }
+      },
       "CreateLabelRequest" : {
         "required" : [ "name" ],
         "type" : "object",
@@ -1881,6 +2184,9 @@
             "type" : "string",
             "format" : "uuid"
           },
+          "mentionHandle" : {
+            "type" : "string"
+          },
           "role" : {
             "type" : "string",
             "enum" : [ "MEMBER", "ADMIN" ]
@@ -1898,6 +2204,29 @@
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/ActivityEventResponse"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "PagedResponseCommentResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/CommentResponse"
             }
           },
           "page" : {
@@ -2081,6 +2410,17 @@
           "toStatus" : {
             "type" : "string",
             "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          }
+        }
+      },
+      "UpdateCommentRequest" : {
+        "required" : [ "body" ],
+        "type" : "object",
+        "properties" : {
+          "body" : {
+            "maxLength" : 16384,
+            "minLength" : 0,
+            "type" : "string"
           }
         }
       },

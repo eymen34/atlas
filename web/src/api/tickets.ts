@@ -1,6 +1,8 @@
 import {
   type ActivityEventResponse,
   ActivityService,
+  type CommentResponse,
+  CommentsService,
   type CreateTicketRequest,
   type LabelResponse,
   LabelsService,
@@ -249,4 +251,71 @@ export async function listTicketActivity(
 ): Promise<ActivityEvent[]> {
   const res = await ActivityService.listTicketActivity(ticketId, page, size);
   return (res.items ?? []).map(toActivityEvent);
+}
+
+/* ───────────────────────── T-022: comments ───────────────────────── */
+
+export interface Comment {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  /** null when the comment is server-redacted (deleted); D5. */
+  body: string | null;
+  deleted: boolean;
+  /** SERVER-resolved mentioned member ids (D4); client metadata is never trusted. */
+  mentionedUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentPage {
+  items: Comment[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+/** Maps a generated CommentResponse; throws on a malformed row (toTicket precedent). */
+export function toComment(raw: CommentResponse): Comment {
+  if (!raw.id || !raw.createdAt) {
+    throw new Error('Malformed comment response: missing id or createdAt');
+  }
+  return {
+    id: raw.id,
+    ticketId: raw.ticketId ?? '',
+    authorId: raw.authorId ?? '',
+    body: raw.deleted ? null : (raw.body ?? ''),
+    deleted: raw.deleted ?? false,
+    mentionedUserIds: raw.mentionedUserIds ?? [],
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt ?? raw.createdAt,
+  };
+}
+
+/** TanStack Query key for a ticket's comment page (page/size encoded). */
+export const commentKeys = {
+  list: (ticketId: string, page: number, size: number) =>
+    ['tickets', ticketId, 'comments', page, size] as const,
+};
+
+export async function listComments(ticketId: string, page = 0, size = 20): Promise<CommentPage> {
+  const res = await CommentsService.listComments(ticketId, page, size);
+  return {
+    items: (res.items ?? []).map(toComment),
+    page: res.page ?? page,
+    size: res.size ?? size,
+    total: res.total ?? 0,
+  };
+}
+
+export async function createComment(ticketId: string, body: string): Promise<Comment> {
+  return toComment(await CommentsService.createComment(ticketId, { body }));
+}
+
+export async function updateComment(commentId: string, body: string): Promise<Comment> {
+  return toComment(await CommentsService.updateComment(commentId, { body }));
+}
+
+export async function deleteComment(commentId: string): Promise<void> {
+  await CommentsService.deleteComment(commentId);
 }

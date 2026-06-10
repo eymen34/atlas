@@ -2,6 +2,7 @@ package io.ngss.atlas.domain;
 
 import io.ngss.atlas.auth.dto.RegisterRequest;
 import io.ngss.atlas.auth.dto.UserRegisteredResponse;
+import io.ngss.atlas.mention.MentionHandleGenerator;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -26,14 +27,17 @@ public class RegistrationService {
   private final UserRepository userRepository;
   private final PasswordCredentialRepository passwordCredentialRepository;
   private final PasswordEncoder passwordEncoder;
+  private final MentionHandleGenerator mentionHandleGenerator;
 
   public RegistrationService(
       UserRepository userRepository,
       PasswordCredentialRepository passwordCredentialRepository,
-      PasswordEncoder passwordEncoder) {
+      PasswordEncoder passwordEncoder,
+      MentionHandleGenerator mentionHandleGenerator) {
     this.userRepository = userRepository;
     this.passwordCredentialRepository = passwordCredentialRepository;
     this.passwordEncoder = passwordEncoder;
+    this.mentionHandleGenerator = mentionHandleGenerator;
   }
 
   @Transactional
@@ -47,9 +51,18 @@ public class RegistrationService {
     Instant now = Instant.now();
     UUID userId = UUID.randomUUID();
 
-    User user =
-        userRepository.save(
-            new User(userId, normalizedEmail, request.displayName().trim(), now, now));
+    // Derive the global-unique @mention handle ONCE, here at registration (D3 —
+    // never re-derived on email change). The existsByMentionHandle pre-check covers
+    // the common case; the V9 unique index is the backstop for a concurrent race
+    // (a losing race surfaces as DataIntegrityViolationException → 409, exactly like
+    // the email race — deliberately not caught here). Exhausting the suffix budget
+    // raises HandleGenerationException → 409 via GlobalExceptionHandler.
+    String mentionHandle =
+        mentionHandleGenerator.derive(normalizedEmail, userRepository::existsByMentionHandle);
+
+    User user = new User(userId, normalizedEmail, request.displayName().trim(), now, now);
+    user.setMentionHandle(mentionHandle);
+    user = userRepository.save(user);
 
     String hash = passwordEncoder.encode(request.password());
     if (hash == null || hash.length() != 60) {

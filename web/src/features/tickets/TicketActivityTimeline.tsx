@@ -2,7 +2,8 @@ import type { ActivityEvent } from '@/api/tickets';
 import type { Member } from '@/api/projects';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { formatRelativeTime } from '@/lib/relativeTime';
-import { getEventMeta, makeActorLookup } from './activityMeta';
+import { useActorLookup } from '@/hooks/useActorLookup';
+import { getEventMeta } from './activityMeta';
 
 export interface TicketActivityTimelineProps {
   events: ActivityEvent[];
@@ -23,7 +24,7 @@ function initials(name: string): string {
  * via {@link getEventMeta}, so a new backend event type never crashes the page.
  */
 export function TicketActivityTimeline({ events, members }: TicketActivityTimelineProps) {
-  const lookup = makeActorLookup(members);
+  const lookup = useActorLookup(members);
 
   return (
     <section

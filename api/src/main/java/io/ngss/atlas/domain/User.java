@@ -39,6 +39,17 @@ public class User {
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
 
+  /**
+   * Global-unique @mention handle (T-022, D3), derived ONCE from the email
+   * local-part at registration. It is deliberately NOT {@code updatable = false}
+   * (so the registration retry can re-set it before the first flush), but the
+   * value is FROZEN after registration: no email-change code path may call
+   * {@link #setMentionHandle} — re-deriving on email change would break existing
+   * mentions and is explicitly out of scope.
+   */
+  @Column(name = "mention_handle", nullable = false, length = 64)
+  private String mentionHandle;
+
   /** JPA-only no-args constructor. Do not use directly. */
   protected User() {}
 
@@ -68,6 +79,18 @@ public class User {
 
   public Instant getUpdatedAt() {
     return updatedAt;
+  }
+
+  public String getMentionHandle() {
+    return mentionHandle;
+  }
+
+  /**
+   * Sets the @mention handle. MUST be called exactly once, at registration only —
+   * see the field javadoc (D3: frozen on email change).
+   */
+  public void setMentionHandle(String mentionHandle) {
+    this.mentionHandle = mentionHandle;
   }
 
   @Override

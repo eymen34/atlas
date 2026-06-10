@@ -70,7 +70,9 @@ class ProjectMemberServiceTest {
   }
 
   private User user(UUID id, String email) {
-    return new User(id, email, "Display", Instant.now(), Instant.now());
+    User u = new User(id, email, "Display", Instant.now(), Instant.now());
+    u.setMentionHandle(email.split("@", 2)[0]);
+    return u;
   }
 
   private ProjectMember member(UUID userId, ProjectRole role) {
@@ -246,7 +248,8 @@ class ProjectMemberServiceTest {
   void listMembers_requiresMember_thenProjects() {
     projectIsLive();
     MemberResponse row =
-        new MemberResponse(CALLER, "c@example.com", "C", ProjectRole.ADMIN, null, Instant.now());
+        new MemberResponse(
+            CALLER, "c@example.com", "C", ProjectRole.ADMIN, null, Instant.now(), "c");
     when(memberRepository.findMemberResponsesByProjectId(PROJECT)).thenReturn(List.of(row));
 
     List<MemberResponse> result = service.listMembers(PROJECT);

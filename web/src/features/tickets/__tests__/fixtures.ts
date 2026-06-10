@@ -20,8 +20,22 @@ export const TICKET_PROJ_1: Ticket = {
 export const TICKET_PROJ_1_UPDATED: Ticket = { ...TICKET_PROJ_1, title: 'Login fix' };
 
 export const MEMBERS_TWO: Member[] = [
-  { userId: 'u1', email: 'alice@example.com', displayName: 'Alice', role: 'ADMIN', createdAt: '' },
-  { userId: 'u2', email: 'bob@example.com', displayName: 'Bob', role: 'MEMBER', createdAt: '' },
+  {
+    userId: 'u1',
+    email: 'alice@example.com',
+    displayName: 'Alice',
+    role: 'ADMIN',
+    createdAt: '',
+    mentionHandle: 'alice',
+  },
+  {
+    userId: 'u2',
+    email: 'bob@example.com',
+    displayName: 'Bob',
+    role: 'MEMBER',
+    createdAt: '',
+    mentionHandle: 'bob',
+  },
 ];
 
 export const LABELS_TWO: Label[] = [
