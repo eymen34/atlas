@@ -92,11 +92,13 @@ class V2MigrationIT {
   @Test
   void tokenHashUniqueConstraintIsEnforcedAtDatabaseLevel() {
     UUID userId = UUID.randomUUID();
-    // display_name is NOT NULL as of V3 (T-011); include it in the fixture.
+    // display_name is NOT NULL as of V3 (T-011) and mention_handle as of V9 (T-022);
+    // this @SpringBootTest runs Flyway to the latest version, so include both.
     jdbc.update(
-        "INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)",
+        "INSERT INTO users (id, email, display_name, mention_handle) VALUES (?, ?, ?, ?)",
         userId,
         "uniq-test@example.com",
+        "uniq-test",
         "uniq-test");
     String hash = "a".repeat(64);
     jdbc.update(
