@@ -59,6 +59,7 @@ class CommentServiceTest {
   @Mock MentionParser mentionParser;
   @Mock ActivityEventWriter activityWriter;
   @Mock EntityManager entityManager;
+  @Mock io.ngss.atlas.watcher.WatcherService watcherService;
   @InjectMocks CommentService service;
 
   private Ticket ticketInProject() {

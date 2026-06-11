@@ -81,13 +81,15 @@ class FlywayV9MigrationIT {
   }
 
   @Test
-  void migrationReachesV9() {
-    String version =
+  void v9IsAppliedSuccessfully() {
+    // Assert the V9 row exists and succeeded — NOT that V9 is the LATEST version.
+    // Pinning latest==N makes every future migration break this test, exactly how
+    // V10 (T-023) broke the old latest==9 assertion (migration_it_no_version_pinning).
+    Integer v9Applied =
         jdbc.queryForObject(
-            "SELECT version FROM flyway_schema_history WHERE success = true "
-                + "ORDER BY installed_rank DESC LIMIT 1",
-            String.class);
-    assertThat(version).isEqualTo("9");
+            "SELECT count(*) FROM flyway_schema_history WHERE version = '9' AND success = true",
+            Integer.class);
+    assertThat(v9Applied).isEqualTo(1);
   }
 
   @Test

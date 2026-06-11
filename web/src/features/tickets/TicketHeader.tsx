@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
+import type { Member } from '@/api/projects';
 import { STATUS_OPTIONS, type Ticket, type TicketStatus } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTransitionTicket, useUpdateTicket } from './hooks';
+import { WatchToggle } from './WatchToggle';
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   TODO: 'To Do',
@@ -23,6 +25,7 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
 export interface TicketHeaderProps {
   idOrKey: string;
   ticket: Ticket;
+  members: Member[];
 }
 
 /**
@@ -30,7 +33,7 @@ export interface TicketHeaderProps {
  * Enter/blur commit, Escape cancels; blank reverts), and the status Select that
  * drives the transition endpoint (NOT a field PATCH).
  */
-export function TicketHeader({ idOrKey, ticket }: TicketHeaderProps) {
+export function TicketHeader({ idOrKey, ticket, members }: TicketHeaderProps) {
   const navigate = useNavigate();
   const update = useUpdateTicket(idOrKey, ticket);
   const transition = useTransitionTicket(idOrKey, ticket);
@@ -116,22 +119,26 @@ export function TicketHeader({ idOrKey, ticket }: TicketHeaderProps) {
           </h1>
         )}
 
-        <Select
-          value={ticket.status}
-          onValueChange={(v) => transition.mutate(v as TicketStatus)}
-          disabled={transition.isPending}
-        >
-          <SelectTrigger data-testid="status-select" className="w-[150px]" aria-label="Status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_OPTIONS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            value={ticket.status}
+            onValueChange={(v) => transition.mutate(v as TicketStatus)}
+            disabled={transition.isPending}
+          >
+            <SelectTrigger data-testid="status-select" className="w-[150px]" aria-label="Status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* T-023: watch toggle — renders only when the watchers flag is on. */}
+          <WatchToggle ticketId={ticket.id} members={members} />
+        </div>
       </div>
     </header>
   );

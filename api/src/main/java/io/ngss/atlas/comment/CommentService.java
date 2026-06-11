@@ -17,6 +17,7 @@ import io.ngss.atlas.mention.MentionParser;
 import io.ngss.atlas.project.ForbiddenProjectAccessException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.TicketNotFoundException;
+import io.ngss.atlas.watcher.WatcherService;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
@@ -50,6 +51,7 @@ public class CommentService {
   private final MentionParser mentionParser;
   private final ActivityEventWriter activityWriter;
   private final EntityManager entityManager;
+  private final WatcherService watcherService;
 
   public CommentService(
       CommentRepository commentRepository,
@@ -58,7 +60,8 @@ public class CommentService {
       ProjectAccessGuard guard,
       MentionParser mentionParser,
       ActivityEventWriter activityWriter,
-      EntityManager entityManager) {
+      EntityManager entityManager,
+      WatcherService watcherService) {
     this.commentRepository = commentRepository;
     this.commentMentionRepository = commentMentionRepository;
     this.ticketRepository = ticketRepository;
@@ -66,6 +69,7 @@ public class CommentService {
     this.mentionParser = mentionParser;
     this.activityWriter = activityWriter;
     this.entityManager = entityManager;
+    this.watcherService = watcherService;
   }
 
   @Transactional
@@ -87,6 +91,8 @@ public class CommentService {
         ActivityEventType.COMMENT_ADDED,
         new CommentAddedPayload(comment.getId()),
         now);
+    // T-023: auto-watch the commenter, sharing the comment's instant.
+    watcherService.autoWatchCommenter(ticketId, callerId, now);
     return CommentResponse.from(comment, List.copyOf(mentioned));
   }
 

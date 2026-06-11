@@ -131,6 +131,8 @@ export const ticketKeys = {
   // that is what is available at mount; the HTTP calls below use the resolved UUID.
   detail: (idOrKey: string) => [...ticketKeys.all, 'detail', idOrKey] as const,
   activity: (idOrKey: string) => [...ticketKeys.all, 'detail', idOrKey, 'activity'] as const,
+  // T-023 watchers. Keyed by ticket UUID (the watcher endpoints bind @PathVariable UUID).
+  watchers: (ticketId: string) => [...ticketKeys.all, ticketId, 'watchers'] as const,
 };
 
 export async function listTickets(projectId: string, filters: TicketFilters): Promise<TicketPage> {
@@ -318,4 +320,21 @@ export async function updateComment(commentId: string, body: string): Promise<Co
 
 export async function deleteComment(commentId: string): Promise<void> {
   await CommentsService.deleteComment(commentId);
+}
+
+/* ───────────────────────── T-023: watchers ───────────────────────── */
+
+/** Watcher user ids for a ticket (bare array; small bounded set). */
+export async function listWatchers(ticketId: string): Promise<string[]> {
+  return (await TicketsService.listTicketWatchers(ticketId)) ?? [];
+}
+
+/** Idempotent watch (204; a second call is a no-op). */
+export async function watchTicket(ticketId: string): Promise<void> {
+  await TicketsService.watchTicket(ticketId);
+}
+
+/** Idempotent unwatch (204; a second call is a no-op). */
+export async function unwatchTicket(ticketId: string): Promise<void> {
+  await TicketsService.unwatchTicket(ticketId);
 }
