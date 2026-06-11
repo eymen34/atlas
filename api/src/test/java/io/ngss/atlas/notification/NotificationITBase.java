@@ -25,8 +25,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
@@ -44,13 +44,27 @@ abstract class NotificationITBase extends BaseIT {
 
   static final String SECRET = "notification-it-secret-min-32-characters-long!";
 
-  @Container
+  // SINGLETON container: started ONCE for the whole JVM and shared by every
+  // NotificationITBase subclass — deliberately NOT a JUnit-managed @Container. A
+  // shared static @Container on an abstract base is stopped by the @Testcontainers
+  // extension after the FIRST subclass's afterAll, while the cached Spring context
+  // (reused by the remaining subclasses) keeps a Hikari pool bound to the now-dead
+  // mapped port → "Connection refused" (the T-024 CI red). A manually-started
+  // singleton stays up until JVM exit (Ryuk reaps it). The start is guarded by Docker
+  // availability so the class still self-skips (disabledWithoutDocker) on Docker-less
+  // dev machines instead of throwing ExceptionInInitializerError at class load.
   @SuppressWarnings("resource")
   static final PostgreSQLContainer<?> POSTGRES =
       new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
           .withDatabaseName("atlas")
           .withUsername("atlas")
           .withPassword("atlas");
+
+  static {
+    if (DockerClientFactory.instance().isDockerAvailable()) {
+      POSTGRES.start();
+    }
+  }
 
   @DynamicPropertySource
   static void props(DynamicPropertyRegistry registry) {
