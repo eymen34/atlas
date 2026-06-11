@@ -3,6 +3,7 @@ import {
   CommentsService,
   ConfigService,
   LabelsService,
+  NotificationsService,
   ProjectMembersService,
   ProjectResponse,
   ProjectsService,
@@ -166,3 +167,12 @@ export const _unwatchTicketProbe: typeof TicketsService.unwatchTicket =
   TicketsService.unwatchTicket;
 export const _listTicketWatchersProbe: typeof TicketsService.listTicketWatchers =
   TicketsService.listTicketWatchers;
+
+// T-024 compile-time probes: fail `tsc -b` if codegen drifts from the notification
+// API the bell depends on (operationId / method-name stability).
+export const _listNotificationsProbe: typeof NotificationsService.listNotifications =
+  NotificationsService.listNotifications;
+export const _markNotificationReadProbe: typeof NotificationsService.markNotificationRead =
+  NotificationsService.markNotificationRead;
+export const _markAllNotificationsReadProbe: typeof NotificationsService.markAllNotificationsRead =
+  NotificationsService.markAllNotificationsRead;

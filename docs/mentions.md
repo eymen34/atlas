@@ -74,6 +74,14 @@ Each comment mutation writes an activity row SYNCHRONOUSLY in the same transacti
 `COMMENT_DELETED`. These three `ActivityEventType` values (and the V8 CHECK
 constraint) already existed from T-019, so V9 does NOT alter the activity schema.
 
+## Notifications (T-024)
+
+`comment_mentions` / `ticket_mentions` are the source for `MENTIONED_COMMENT` /
+`MENTIONED_TICKET` notifications. On an edit, only **newly-added** mentions are
+notified (`newSet − oldSet`, the old set captured BEFORE the delete+reinsert) — so
+re-mentioning the same handle never re-notifies. Self-mentions are skipped. Full
+rules in [notifications.md](./notifications.md).
+
 ## Packages (T-022)
 
 `io.ngss.atlas.comment` (Comment aggregate: service, controller, repositories),

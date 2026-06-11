@@ -60,6 +60,7 @@ class CommentServiceTest {
   @Mock ActivityEventWriter activityWriter;
   @Mock EntityManager entityManager;
   @Mock io.ngss.atlas.watcher.WatcherService watcherService;
+  @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
   @InjectMocks CommentService service;
 
   private Ticket ticketInProject() {

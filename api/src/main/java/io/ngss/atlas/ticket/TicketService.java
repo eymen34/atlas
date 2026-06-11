@@ -23,12 +23,14 @@ import io.ngss.atlas.label.CrossProjectLabelException;
 import io.ngss.atlas.label.LabelRepository;
 import io.ngss.atlas.label.TicketLabelRepository;
 import io.ngss.atlas.mention.MentionParser;
+import io.ngss.atlas.mention.MentionsPersistedEvent;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.dto.CreateTicketRequest;
 import io.ngss.atlas.ticket.dto.TicketResponse;
 import io.ngss.atlas.ticket.dto.TransitionRequest;
 import io.ngss.atlas.ticket.dto.UpdateTicketRequest;
+import io.ngss.atlas.ticket.event.TicketAssignedEvent;
 import io.ngss.atlas.ticket.event.TicketTransitionedEvent;
 import io.ngss.atlas.watcher.WatcherService;
 import jakarta.persistence.EntityManager;
@@ -139,19 +141,42 @@ public class TicketService {
             null);
     ticketRepository.save(ticket);
     // Activity: append a CREATED row in THIS transaction (atomic with the insert).
-    activityWriter.record(
-        ticket.getId(),
-        callerId,
-        ActivityEventType.CREATED,
-        new CreatedPayload(ticket.getTitle(), ticket.getStatus(), ticket.getPriority()),
-        now);
+    UUID createdEventId =
+        activityWriter.record(
+            ticket.getId(),
+            callerId,
+            ActivityEventType.CREATED,
+            new CreatedPayload(ticket.getTitle(), ticket.getStatus(), ticket.getPriority()),
+            now);
     // T-022: a new ticket's HTML description may @mention project members.
-    if (req.description() != null) {
-      saveTicketMentions(ticket.getId(), mentionParser.parse(req.description(), projectId));
+    Set<UUID> descriptionMentions =
+        req.description() != null ? mentionParser.parse(req.description(), projectId) : Set.of();
+    if (!descriptionMentions.isEmpty()) {
+      saveTicketMentions(ticket.getId(), descriptionMentions);
     }
     // T-023: auto-watch the creator (always) and the initial assignee (if any),
     // sharing the create instant so watcher rows align with the CREATED activity.
     watcherService.autoWatchOnCreate(ticket, callerId, req.assigneeId(), now);
+    // T-024: fan-out events (AFTER_COMMIT). create-with-assignee → ASSIGNED (self-assign
+    // suppressed by the listener); description @mentions → MENTIONED_TICKET with a null
+    // sourceEventId (there is no DESCRIPTION_CHANGED activity type — CORRECTION-A).
+    if (req.assigneeId() != null) {
+      eventPublisher.publishEvent(
+          new TicketAssignedEvent(
+              ticket.getId(), projectId, req.assigneeId(), callerId, createdEventId, now));
+    }
+    if (!descriptionMentions.isEmpty()) {
+      eventPublisher.publishEvent(
+          new MentionsPersistedEvent(
+              MentionsPersistedEvent.Kind.TICKET,
+              ticket.getId(),
+              projectId,
+              null,
+              descriptionMentions,
+              callerId,
+              null,
+              now));
+    }
     // A freshly created ticket has no labels yet.
     return TicketResponse.from(ticket, project.getKey(), List.of());
   }
@@ -262,17 +287,27 @@ public class TicketService {
     ticketRepository.save(ticket);
 
     if (!Objects.equals(oldAssignee, ticket.getAssigneeId())) {
-      activityWriter.record(
-          ticket.getId(),
-          callerId,
-          ActivityEventType.ASSIGNEE_CHANGED,
-          new AssigneeChangedPayload(oldAssignee, ticket.getAssigneeId()),
-          now);
+      UUID assigneeEventId =
+          activityWriter.record(
+              ticket.getId(),
+              callerId,
+              ActivityEventType.ASSIGNEE_CHANGED,
+              new AssigneeChangedPayload(oldAssignee, ticket.getAssigneeId()),
+              now);
       // T-023: auto-watch the NEW assignee (the actor making the change is NOT
       // added; an unassign — new assignee null — adds nobody). Reuses `now` above
       // so the watcher row shares the ASSIGNEE_CHANGED instant (EC-10 parity).
       if (ticket.getAssigneeId() != null) {
         watcherService.autoWatchAssignee(ticket.getId(), ticket.getAssigneeId(), now);
+        // T-024: notify the new assignee (listener suppresses self-assign).
+        eventPublisher.publishEvent(
+            new TicketAssignedEvent(
+                ticket.getId(),
+                ticket.getProjectId(),
+                ticket.getAssigneeId(),
+                callerId,
+                assigneeEventId,
+                now));
       }
     }
     if (oldPriority != ticket.getPriority()) {
@@ -287,10 +322,26 @@ public class TicketService {
     // the request (req.description() != null) AND meaningfully changed — a null↔""
     // or whitespace-only flip is a no-op and must not churn ticket_mentions.
     if (req.description() != null && isMeaningfullyChanged(oldDescription, req.description())) {
+      // T-024: capture old mentions BEFORE delete so we notify only newly-added ones.
+      Set<UUID> oldMentions = new HashSet<>(ticketMentionRepository.findUserIdsByTicketId(ticketId));
       ticketMentionRepository.deleteByTicketId(ticketId);
       entityManager.flush();
-      saveTicketMentions(
-          ticketId, mentionParser.parse(req.description(), ticket.getProjectId()));
+      Set<UUID> newMentions = mentionParser.parse(req.description(), ticket.getProjectId());
+      saveTicketMentions(ticketId, newMentions);
+      Set<UUID> added = new HashSet<>(newMentions);
+      added.removeAll(oldMentions);
+      if (!added.isEmpty()) {
+        eventPublisher.publishEvent(
+            new MentionsPersistedEvent(
+                MentionsPersistedEvent.Kind.TICKET,
+                ticketId,
+                ticket.getProjectId(),
+                null,
+                added,
+                callerId,
+                null, // no DESCRIPTION_CHANGED activity type (CORRECTION-A)
+                now));
+      }
     }
     // Mutation responses do not re-read associations (T-018 contract).
     return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
@@ -315,18 +366,20 @@ public class TicketService {
     Instant now = Instant.now();
     ticket.transition(to, now);
     ticketRepository.save(ticket);
-    // T-024 fan-out event (consumed AFTER_COMMIT by notifications) — KEPT.
+    // Activity: a STATUS_CHANGED row, written synchronously in THIS transaction (atomic
+    // with the status change). T-024: record FIRST, capture its id, then publish the
+    // fan-out event carrying that id as sourceEventId.
+    UUID statusEventId =
+        activityWriter.record(
+            ticket.getId(),
+            callerId,
+            ActivityEventType.STATUS_CHANGED,
+            new StatusChangedPayload(from, to),
+            now);
+    // T-024 fan-out event (consumed AFTER_COMMIT by NotificationEventListener).
     eventPublisher.publishEvent(
         new TicketTransitionedEvent(
-            ticket.getId(), ticket.getProjectId(), from, to, callerId, now));
-    // Activity: a STATUS_CHANGED row, written synchronously in THIS transaction
-    // (NOT via the event above) so it is atomic with the status change.
-    activityWriter.record(
-        ticket.getId(),
-        callerId,
-        ActivityEventType.STATUS_CHANGED,
-        new StatusChangedPayload(from, to),
-        now);
+            ticket.getId(), ticket.getProjectId(), from, to, callerId, statusEventId, now));
     return TicketResponse.from(ticket, projectKey, List.of());
   }
 

@@ -1,7 +1,8 @@
-// Domain layer. Holds the project's 14 JPA entities (User, PasswordCredential —
+// Domain layer. Holds the project's 15 JPA entities (User, PasswordCredential —
 // T-011; RefreshToken — T-012; Project — T-014; ProjectMember — T-015; Ticket +
 // ProjectTicketCounter — T-017; Label + TicketLabel — T-018; ActivityEvent —
-// T-019; Comment + CommentMention + TicketMention — T-022; TicketWatcher — T-023),
+// T-019; Comment + CommentMention + TicketMention — T-022; TicketWatcher — T-023;
+// Notification — T-024),
 // most of their Spring Data repositories (the Label/TicketLabel and ActivityEvent
 // repositories live in io.ngss.atlas.label / io.ngss.atlas.activity, the
 // Comment/mention repositories in io.ngss.atlas.comment, and WatcherRepository in
