@@ -89,7 +89,7 @@ export default function TicketDetailPage() {
     <div data-testid="ticket-detail-page" className="mx-auto max-w-5xl p-4 lg:p-6">
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
-          <TicketHeader idOrKey={key} ticket={ticket} />
+          <TicketHeader idOrKey={key} ticket={ticket} members={members} />
           <TicketDescription idOrKey={key} ticket={ticket} />
           <CommentsSection
             ticketId={ticket.id}

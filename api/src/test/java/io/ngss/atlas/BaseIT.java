@@ -22,9 +22,9 @@ public abstract class BaseIT {
    * MUST be emptied before the table it references:
    *
    * <pre>
-   * ticket_mentions → comment_mentions → comments → activity_events → ticket_labels
-   *   → labels → tickets → project_ticket_counters → project_members → projects
-   *   → refresh_tokens → password_credentials → users
+   * ticket_mentions → ticket_watchers → comment_mentions → comments → activity_events
+   *   → ticket_labels → labels → tickets → project_ticket_counters → project_members
+   *   → projects → refresh_tokens → password_credentials → users
    * </pre>
    *
    * <p>Tables with no rows for a given test (e.g. labels in an auth-only IT) delete
@@ -32,6 +32,7 @@ public abstract class BaseIT {
    */
   public static void cleanDatabase(JdbcTemplate jdbc) {
     jdbc.update("DELETE FROM ticket_mentions");
+    jdbc.update("DELETE FROM ticket_watchers");
     jdbc.update("DELETE FROM comment_mentions");
     jdbc.update("DELETE FROM comments");
     jdbc.update("DELETE FROM activity_events");

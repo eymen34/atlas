@@ -244,6 +244,30 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t023WatcherAndPublicConfigEndpointsPresent() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    assertThat(paths.path("/api/tickets/{id}/watch").path("put").path("operationId").asString())
+        .isEqualTo("watchTicket");
+    assertThat(paths.path("/api/tickets/{id}/watch").path("delete").path("operationId").asString())
+        .isEqualTo("unwatchTicket");
+    assertThat(paths.path("/api/tickets/{id}/watchers").path("get").path("operationId").asString())
+        .isEqualTo("listTicketWatchers");
+    assertThat(paths.path("/api/config/public").path("get").path("operationId").asString())
+        .isEqualTo("getPublicConfig");
+
+    // The public config endpoint is documented WITHOUT a bearerAuth security block.
+    assertThat(paths.path("/api/config/public").path("get").has("security")).isFalse();
+
+    assertThat(root.path("components").path("schemas").has("PublicConfigResponse"))
+        .as("PublicConfigResponse schema")
+        .isTrue();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(

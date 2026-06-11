@@ -30,6 +30,7 @@ import io.ngss.atlas.ticket.dto.TicketResponse;
 import io.ngss.atlas.ticket.dto.TransitionRequest;
 import io.ngss.atlas.ticket.dto.UpdateTicketRequest;
 import io.ngss.atlas.ticket.event.TicketTransitionedEvent;
+import io.ngss.atlas.watcher.WatcherService;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -82,6 +83,7 @@ public class TicketService {
   private final ActivityEventWriter activityWriter;
   private final MentionParser mentionParser;
   private final TicketMentionRepository ticketMentionRepository;
+  private final WatcherService watcherService;
 
   public TicketService(
       TicketRepository ticketRepository,
@@ -94,7 +96,8 @@ public class TicketService {
       EntityManager entityManager,
       ActivityEventWriter activityWriter,
       MentionParser mentionParser,
-      TicketMentionRepository ticketMentionRepository) {
+      TicketMentionRepository ticketMentionRepository,
+      WatcherService watcherService) {
     this.ticketRepository = ticketRepository;
     this.counterRepository = counterRepository;
     this.projectRepository = projectRepository;
@@ -106,6 +109,7 @@ public class TicketService {
     this.activityWriter = activityWriter;
     this.mentionParser = mentionParser;
     this.ticketMentionRepository = ticketMentionRepository;
+    this.watcherService = watcherService;
   }
 
   // ───────────────────────── create ─────────────────────────
@@ -145,6 +149,9 @@ public class TicketService {
     if (req.description() != null) {
       saveTicketMentions(ticket.getId(), mentionParser.parse(req.description(), projectId));
     }
+    // T-023: auto-watch the creator (always) and the initial assignee (if any),
+    // sharing the create instant so watcher rows align with the CREATED activity.
+    watcherService.autoWatchOnCreate(ticket, callerId, req.assigneeId(), now);
     // A freshly created ticket has no labels yet.
     return TicketResponse.from(ticket, project.getKey(), List.of());
   }
@@ -261,6 +268,12 @@ public class TicketService {
           ActivityEventType.ASSIGNEE_CHANGED,
           new AssigneeChangedPayload(oldAssignee, ticket.getAssigneeId()),
           now);
+      // T-023: auto-watch the NEW assignee (the actor making the change is NOT
+      // added; an unassign — new assignee null — adds nobody). Reuses `now` above
+      // so the watcher row shares the ASSIGNEE_CHANGED instant (EC-10 parity).
+      if (ticket.getAssigneeId() != null) {
+        watcherService.autoWatchAssignee(ticket.getId(), ticket.getAssigneeId(), now);
+      }
     }
     if (oldPriority != ticket.getPriority()) {
       activityWriter.record(

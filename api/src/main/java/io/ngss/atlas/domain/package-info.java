@@ -1,11 +1,12 @@
-// Domain layer. Holds the project's 13 JPA entities (User, PasswordCredential —
+// Domain layer. Holds the project's 14 JPA entities (User, PasswordCredential —
 // T-011; RefreshToken — T-012; Project — T-014; ProjectMember — T-015; Ticket +
 // ProjectTicketCounter — T-017; Label + TicketLabel — T-018; ActivityEvent —
-// T-019; Comment + CommentMention + TicketMention — T-022), most of their Spring
-// Data repositories (the Label/TicketLabel and ActivityEvent repositories live in
-// io.ngss.atlas.label / io.ngss.atlas.activity, and the Comment/mention
-// repositories in io.ngss.atlas.comment, alongside those aggregates' services),
-// the EmailAlreadyRegisteredException, and RegistrationService.
+// T-019; Comment + CommentMention + TicketMention — T-022; TicketWatcher — T-023),
+// most of their Spring Data repositories (the Label/TicketLabel and ActivityEvent
+// repositories live in io.ngss.atlas.label / io.ngss.atlas.activity, the
+// Comment/mention repositories in io.ngss.atlas.comment, and WatcherRepository in
+// io.ngss.atlas.watcher, alongside those aggregates' services), the
+// EmailAlreadyRegisteredException, and RegistrationService.
 //
 // APPCDS COLD-START HARD RULE (N6 / appcds_boot_safety): every @Entity here is
 // initialized by the EntityManagerFactory during the Dockerfile stage-3 no-DB

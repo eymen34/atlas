@@ -111,6 +111,11 @@ public class SecurityConfig {
                             "/api/auth/register",
                             "/api/auth/refresh")
                         .permitAll()
+                    // T-023: public feature-flag config — readable before login so
+                    // the SPA can gate flag-controlled UI. ONLY this exact GET path
+                    // is opened (no /api/config/** glob); it must precede the
+                    // /api/** authenticated catch-all below.
+                    .requestMatchers(HttpMethod.GET, "/api/config/public").permitAll()
                     // Internal endpoints — denyAll today; T-029 wires a
                     // shared-secret header filter ahead of this rule.
                     .requestMatchers("/internal/**").denyAll()

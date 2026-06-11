@@ -97,6 +97,11 @@ springdoc:
   override-with-generic-response: false
 
 app:
+  # T-023: feature flags. FEATURE_WATCHERS_ENABLED is NOT APP_-prefixed (same as
+  # JWT_SECRET); default true. Surfaced unauthenticated via GET /api/config/public.
+  feature:
+    watchers:
+      enabled: ${FEATURE_WATCHERS_ENABLED:true}
   cors:
     # Comma-separated list, trimmed by SecurityConfig. Default covers the
     # Vite dev server (:5173) and the Vite preview server (:4173) used by

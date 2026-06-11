@@ -1,6 +1,7 @@
 import {
   AuthService,
   CommentsService,
+  ConfigService,
   LabelsService,
   ProjectMembersService,
   ProjectResponse,
@@ -155,3 +156,13 @@ export const _updateCommentProbe: typeof CommentsService.updateComment =
   CommentsService.updateComment;
 export const _deleteCommentProbe: typeof CommentsService.deleteComment =
   CommentsService.deleteComment;
+
+// T-023 compile-time probes: fail `tsc -b` if codegen drifts from the watcher /
+// public-config API the watch toggle depends on.
+export const _publicConfigProbe: typeof ConfigService.getPublicConfig =
+  ConfigService.getPublicConfig;
+export const _watchTicketProbe: typeof TicketsService.watchTicket = TicketsService.watchTicket;
+export const _unwatchTicketProbe: typeof TicketsService.unwatchTicket =
+  TicketsService.unwatchTicket;
+export const _listTicketWatchersProbe: typeof TicketsService.listTicketWatchers =
+  TicketsService.listTicketWatchers;

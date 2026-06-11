@@ -336,6 +336,26 @@
         "tags" : [ "comments" ]
       }
     },
+    "/api/config/public" : {
+      "get" : {
+        "description" : "Non-sensitive feature flags the SPA needs before login.",
+        "operationId" : "getPublicConfig",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublicConfigResponse"
+                }
+              }
+            },
+            "description" : "Public configuration"
+          }
+        },
+        "summary" : "Public feature flags (unauthenticated)",
+        "tags" : [ "config" ]
+      }
+    },
     "/api/labels/{id}" : {
       "delete" : {
         "operationId" : "deleteLabel",
@@ -1834,6 +1854,127 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/tickets/{id}/watch" : {
+      "delete" : {
+        "operationId" : "unwatchTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Not watching (removed or already absent)"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "description" : "Ticket not found, caller is not a member, or watchers disabled"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Stop watching a ticket (any member). Idempotent — a second call is a no-op.",
+        "tags" : [ "tickets" ]
+      },
+      "put" : {
+        "operationId" : "watchTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Watching (created or already present)"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "description" : "Ticket not found, caller is not a member, or watchers disabled"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Watch a ticket (any member). Idempotent — a second call is a no-op.",
+        "tags" : [ "tickets" ]
+      }
+    },
+    "/api/tickets/{id}/watchers" : {
+      "get" : {
+        "operationId" : "listTicketWatchers",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "string",
+                    "format" : "uuid"
+                  }
+                }
+              }
+            },
+            "description" : "Watcher user ids (bare array)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "string",
+                    "format" : "uuid"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "string",
+                    "format" : "uuid"
+                  }
+                }
+              }
+            },
+            "description" : "Ticket not found, caller is not a member, or watchers disabled"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a ticket's watcher user ids, oldest-first (any member)",
+        "tags" : [ "tickets" ]
+      }
+    },
     "/health" : {
       "get" : {
         "operationId" : "health",
@@ -2040,6 +2181,14 @@
             "maxLength" : 200,
             "minLength" : 0,
             "type" : "string"
+          }
+        }
+      },
+      "FeaturesDto" : {
+        "type" : "object",
+        "properties" : {
+          "watchers" : {
+            "type" : "boolean"
           }
         }
       },
@@ -2301,6 +2450,14 @@
           "updatedAt" : {
             "type" : "string",
             "format" : "date-time"
+          }
+        }
+      },
+      "PublicConfigResponse" : {
+        "type" : "object",
+        "properties" : {
+          "features" : {
+            "$ref" : "#/components/schemas/FeaturesDto"
           }
         }
       },
