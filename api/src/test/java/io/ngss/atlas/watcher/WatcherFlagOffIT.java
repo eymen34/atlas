@@ -77,6 +77,7 @@ class WatcherFlagOffIT {
 
   private String tokenAlice;
   private String engId;
+  private UUID bob; // a real user, used as a valid assignee (assignee_id FKs users)
 
   @BeforeEach
   void setUp() {
@@ -84,6 +85,7 @@ class WatcherFlagOffIT {
     RestAssured.port = port;
     BaseIT.cleanDatabase(jdbc);
     UUID alice = register("alice@example.com", "Alice");
+    bob = register("bob@example.com", "Bob");
     tokenAlice = sign(alice);
     engId = createProject(tokenAlice, "ENG", "Engineering");
   }
@@ -107,8 +109,10 @@ class WatcherFlagOffIT {
   }
 
   @Test
-  void ticketCreate_stillSucceeds_withZeroWatcherRows() {
-    String ticketId = createTicket("{\"title\":\"NoWatch\",\"assigneeId\":\"" + UUID.randomUUID() + "\"}");
+  void ticketCreate_withAssignee_stillSucceeds_withZeroWatcherRows() {
+    // Real assignee (bob) so assignee_id's FK is satisfied — the create must 201 and,
+    // with the flag OFF, auto-watch the creator AND assignee a no-op: zero rows.
+    String ticketId = createTicket("{\"title\":\"NoWatch\",\"assigneeId\":\"" + bob + "\"}");
     Integer rows =
         jdbc.queryForObject(
             "SELECT count(*) FROM ticket_watchers WHERE ticket_id=?::uuid", Integer.class, ticketId);
