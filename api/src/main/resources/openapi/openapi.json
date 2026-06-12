@@ -469,6 +469,113 @@
         "tags" : [ "labels" ]
       }
     },
+    "/api/notifications" : {
+      "get" : {
+        "description" : "Paged (size clamped 1..100). unread=true filters to unread only. Each row is enriched with projectKey, ticketKey, ticketTitle, actorDisplayName.",
+        "operationId" : "listNotifications",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "unread",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseNotificationResponse"
+                }
+              }
+            },
+            "description" : "Notifications (paged envelope)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseNotificationResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List the caller's notifications, newest first",
+        "tags" : [ "notifications" ]
+      }
+    },
+    "/api/notifications/read-all" : {
+      "post" : {
+        "operationId" : "markAllNotificationsRead",
+        "responses" : {
+          "204" : {
+            "description" : "All marked read"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Mark all the caller's notifications read (idempotent)",
+        "tags" : [ "notifications" ]
+      }
+    },
+    "/api/notifications/{id}/read" : {
+      "post" : {
+        "operationId" : "markNotificationRead",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Marked read (or already read)"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "description" : "Notification not found or not the caller's"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Mark one notification read (idempotent; caller-scoped)",
+        "tags" : [ "notifications" ]
+      }
+    },
     "/api/projects" : {
       "get" : {
         "operationId" : "list",
@@ -2346,6 +2453,56 @@
           }
         }
       },
+      "NotificationResponse" : {
+        "type" : "object",
+        "properties" : {
+          "actorDisplayName" : {
+            "type" : "string"
+          },
+          "actorId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "commentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "fromStatus" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "ASSIGNED", "MENTIONED_TICKET", "MENTIONED_COMMENT", "WATCHED_STATUS_CHANGED" ]
+          },
+          "projectKey" : {
+            "type" : "string"
+          },
+          "read" : {
+            "type" : "boolean"
+          },
+          "ticketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "ticketKey" : {
+            "type" : "string"
+          },
+          "ticketTitle" : {
+            "type" : "string"
+          },
+          "toStatus" : {
+            "type" : "string"
+          }
+        }
+      },
       "PagedResponseActivityEventResponse" : {
         "type" : "object",
         "properties" : {
@@ -2376,6 +2533,29 @@
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/CommentResponse"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "PagedResponseNotificationResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/NotificationResponse"
             }
           },
           "page" : {

@@ -19,4 +19,8 @@ public interface CommentMentionRepository extends JpaRepository<CommentMention, 
 
   /** The resolved mention rows for the given comments — batch-loaded for a list page. */
   List<CommentMention> findByCommentIdIn(Collection<UUID> commentIds);
+
+  /** Current mention user ids for a comment (T-024: captured BEFORE re-mention diff). */
+  @Query("SELECT cm.userId FROM CommentMention cm WHERE cm.commentId = :commentId")
+  List<UUID> findUserIdsByCommentId(@Param("commentId") UUID commentId);
 }

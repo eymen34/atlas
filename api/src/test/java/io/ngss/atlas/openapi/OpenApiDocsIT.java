@@ -268,6 +268,38 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t024NotificationEndpointsPresentAndNoUnreadCountEndpoint() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    // The three notification endpoints with distinct, stable operationIds.
+    assertThat(paths.path("/api/notifications").path("get").path("operationId").asString())
+        .isEqualTo("listNotifications");
+    assertThat(
+            paths
+                .path("/api/notifications/{id}/read")
+                .path("post")
+                .path("operationId")
+                .asString())
+        .isEqualTo("markNotificationRead");
+    assertThat(
+            paths.path("/api/notifications/read-all").path("post").path("operationId").asString())
+        .isEqualTo("markAllNotificationsRead");
+
+    // BLOCKING-1: there is deliberately NO unread-count endpoint (the badge uses the
+    // list with unread=true&size=1 and reads `total`). Guard against one creeping in.
+    assertThat(paths.has("/api/notifications/unread-count"))
+        .as("there must be no dedicated unread-count endpoint")
+        .isFalse();
+
+    // The 404 (foreign/unknown id) is documented on mark-read.
+    assertThat(paths.path("/api/notifications/{id}/read").path("post").path("responses").has("404"))
+        .isTrue();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(

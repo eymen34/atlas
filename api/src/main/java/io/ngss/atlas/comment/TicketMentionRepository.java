@@ -14,4 +14,8 @@ public interface TicketMentionRepository extends JpaRepository<TicketMention, UU
   @Modifying
   @Query("DELETE FROM TicketMention tm WHERE tm.ticketId = :ticketId")
   void deleteByTicketId(@Param("ticketId") UUID ticketId);
+
+  /** Current description-mention user ids (T-024: captured BEFORE deleteByTicketId). */
+  @Query("SELECT tm.userId FROM TicketMention tm WHERE tm.ticketId = :ticketId")
+  java.util.List<UUID> findUserIdsByTicketId(@Param("ticketId") UUID ticketId);
 }

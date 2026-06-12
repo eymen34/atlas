@@ -93,6 +93,24 @@ class FlywayV9MigrationIT {
   }
 
   @Test
+  void v11NotificationsMigrationIsApplied() {
+    // Existence check (not latest==N) per migration_it_no_version_pinning. V11 is the
+    // notifications table (T-024); the Phase-2 migrate-to-latest above applies it.
+    Integer v11Applied =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM flyway_schema_history WHERE version = '11' AND success = true",
+            Integer.class);
+    assertThat(v11Applied).isEqualTo(1);
+
+    Integer notificationsTable =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM information_schema.tables "
+                + "WHERE table_name = 'notifications'",
+            Integer.class);
+    assertThat(notificationsTable).isEqualTo(1);
+  }
+
+  @Test
   void backfillIsLowercaseDeterministicAndCollisionSuffixed() {
     assertThat(handle(ALICE_1)).isEqualTo("alice");
     assertThat(handle(ALICE_2)).isEqualTo("alice-2"); // uppercase email → lowercased + suffixed

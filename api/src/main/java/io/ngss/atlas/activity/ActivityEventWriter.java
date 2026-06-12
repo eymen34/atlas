@@ -36,8 +36,12 @@ public class ActivityEventWriter {
     this.objectMapper = objectMapper;
   }
 
+  /**
+   * @return the id of the activity row written (T-024: callers publish it as a
+   *     notification's {@code sourceEventId}; callers that don't need it ignore it).
+   */
   @Transactional(propagation = Propagation.MANDATORY)
-  public void record(
+  public UUID record(
       UUID ticketId, UUID actorId, ActivityEventType type, Object payloadObject, Instant at) {
     Objects.requireNonNull(ticketId, "ticketId");
     Objects.requireNonNull(actorId, "actorId");
@@ -52,6 +56,8 @@ public class ActivityEventWriter {
       // client error — fail loud rather than persist a corrupt row.
       throw new IllegalStateException("activity payload serialization failed for " + type, e);
     }
-    repository.save(new ActivityEvent(UUID.randomUUID(), ticketId, actorId, type, json, at));
+    UUID eventId = UUID.randomUUID();
+    repository.save(new ActivityEvent(eventId, ticketId, actorId, type, json, at));
+    return eventId;
   }
 }

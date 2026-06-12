@@ -1,8 +1,8 @@
-import { Bell } from 'lucide-react';
 import { Outlet } from 'react-router';
 import { useLogout } from '@/auth/useAuthMutations';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useAuthStore } from '@/store/authStore';
 
 export function AppShell() {
@@ -19,9 +19,7 @@ export function AppShell() {
           <span data-testid="topbar-user" className="text-sm text-muted-foreground">
             {user?.displayName}
           </span>
-          <Button variant="ghost" size="icon" aria-label="Notifications" type="button">
-            <Bell className="h-5 w-5" aria-hidden="true" />
-          </Button>
+          <NotificationBell />
           <Avatar>
             <AvatarFallback aria-label="User menu placeholder">
               {user?.displayName?.charAt(0)?.toUpperCase() ?? '??'}

@@ -14,17 +14,20 @@ import io.ngss.atlas.domain.CommentMention;
 import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketRepository;
 import io.ngss.atlas.mention.MentionParser;
+import io.ngss.atlas.mention.MentionsPersistedEvent;
 import io.ngss.atlas.project.ForbiddenProjectAccessException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.TicketNotFoundException;
 import io.ngss.atlas.watcher.WatcherService;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -52,6 +55,7 @@ public class CommentService {
   private final ActivityEventWriter activityWriter;
   private final EntityManager entityManager;
   private final WatcherService watcherService;
+  private final ApplicationEventPublisher eventPublisher;
 
   public CommentService(
       CommentRepository commentRepository,
@@ -61,7 +65,8 @@ public class CommentService {
       MentionParser mentionParser,
       ActivityEventWriter activityWriter,
       EntityManager entityManager,
-      WatcherService watcherService) {
+      WatcherService watcherService,
+      ApplicationEventPublisher eventPublisher) {
     this.commentRepository = commentRepository;
     this.commentMentionRepository = commentMentionRepository;
     this.ticketRepository = ticketRepository;
@@ -70,6 +75,7 @@ public class CommentService {
     this.activityWriter = activityWriter;
     this.entityManager = entityManager;
     this.watcherService = watcherService;
+    this.eventPublisher = eventPublisher;
   }
 
   @Transactional
@@ -85,14 +91,28 @@ public class CommentService {
     Set<UUID> mentioned = mentionParser.parse(req.body(), ticket.getProjectId());
     saveMentions(comment.getId(), mentioned);
 
-    activityWriter.record(
-        ticketId,
-        callerId,
-        ActivityEventType.COMMENT_ADDED,
-        new CommentAddedPayload(comment.getId()),
-        now);
+    UUID addedEventId =
+        activityWriter.record(
+            ticketId,
+            callerId,
+            ActivityEventType.COMMENT_ADDED,
+            new CommentAddedPayload(comment.getId()),
+            now);
     // T-023: auto-watch the commenter, sharing the comment's instant.
     watcherService.autoWatchCommenter(ticketId, callerId, now);
+    // T-024: notify mentioned members (listener skips the actor before dedup).
+    if (!mentioned.isEmpty()) {
+      eventPublisher.publishEvent(
+          new MentionsPersistedEvent(
+              MentionsPersistedEvent.Kind.COMMENT,
+              ticketId,
+              ticket.getProjectId(),
+              comment.getId(),
+              mentioned,
+              callerId,
+              addedEventId,
+              now));
+    }
     return CommentResponse.from(comment, List.copyOf(mentioned));
   }
 
@@ -138,18 +158,37 @@ public class CommentService {
     // Re-derive mentions from scratch: drop the old set, flush so the DELETE lands
     // before the re-INSERTs (else the UNIQUE(comment_id,user_id) can be violated),
     // then persist the new set.
+    // T-024: capture old mentions BEFORE delete so we notify only newly-added ones.
+    Set<UUID> oldMentions =
+        new HashSet<>(commentMentionRepository.findUserIdsByCommentId(commentId));
     commentMentionRepository.deleteByCommentId(commentId);
     entityManager.flush();
     Set<UUID> mentioned = mentionParser.parse(req.body(), ticket.getProjectId());
     saveMentions(commentId, mentioned);
 
     // COMMENT_EDITED is written unconditionally (no-op-edit suppression is backlog).
-    activityWriter.record(
-        comment.getTicketId(),
-        callerId,
-        ActivityEventType.COMMENT_EDITED,
-        new CommentEditedPayload(commentId),
-        now);
+    UUID editedEventId =
+        activityWriter.record(
+            comment.getTicketId(),
+            callerId,
+            ActivityEventType.COMMENT_EDITED,
+            new CommentEditedPayload(commentId),
+            now);
+    // T-024: notify only NEWLY-added mentions (re-mentioning the same user → no row).
+    Set<UUID> added = new HashSet<>(mentioned);
+    added.removeAll(oldMentions);
+    if (!added.isEmpty()) {
+      eventPublisher.publishEvent(
+          new MentionsPersistedEvent(
+              MentionsPersistedEvent.Kind.COMMENT,
+              comment.getTicketId(),
+              ticket.getProjectId(),
+              commentId,
+              added,
+              callerId,
+              editedEventId,
+              now));
+    }
     return CommentResponse.from(comment, List.copyOf(mentioned));
   }
 

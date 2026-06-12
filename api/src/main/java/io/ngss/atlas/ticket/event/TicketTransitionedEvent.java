@@ -20,6 +20,8 @@ import java.util.UUID;
  * @param fromStatus status before the transition
  * @param toStatus status after the transition (guaranteed {@code != fromStatus})
  * @param actorId the authenticated caller who performed the transition
+ * @param sourceEventId the STATUS_CHANGED activity row's id (T-024; recorded BEFORE
+ *     this event is published so the notification can reference it)
  * @param occurredAt when the transition was applied
  */
 public record TicketTransitionedEvent(
@@ -28,4 +30,5 @@ public record TicketTransitionedEvent(
     TicketStatus fromStatus,
     TicketStatus toStatus,
     UUID actorId,
+    UUID sourceEventId,
     Instant occurredAt) {}

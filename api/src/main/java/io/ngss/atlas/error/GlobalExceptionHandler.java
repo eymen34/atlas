@@ -5,6 +5,7 @@ import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.comment.CommentNotFoundException;
 import io.ngss.atlas.domain.EmailAlreadyRegisteredException;
 import io.ngss.atlas.mention.HandleGenerationException;
+import io.ngss.atlas.notification.NotificationNotFoundException;
 import io.ngss.atlas.label.CrossProjectLabelException;
 import io.ngss.atlas.label.DuplicateLabelNameException;
 import io.ngss.atlas.label.LabelNotFoundException;
@@ -189,6 +190,14 @@ public class GlobalExceptionHandler {
       HandleGenerationException ex, HttpServletRequest request) {
     log.warn("mention-handle generation exhausted path={}", request.getRequestURI());
     return build(HttpStatus.CONFLICT, "Could not generate a unique mention handle", request);
+  }
+
+  @ExceptionHandler(NotificationNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleNotificationNotFound(
+      NotificationNotFoundException ex, HttpServletRequest request) {
+    // Foreign id OR genuinely missing — uniform 404 (not 403) avoids the IDOR leak.
+    log.info("notification not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Notification not found", request);
   }
 
   @ExceptionHandler(LabelNotFoundException.class)
