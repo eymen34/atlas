@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tracker
+description: >-
+  atlas — self-hostable Jira-clone (Spring Boot 4 / React 19 / Postgres 17).
+  Deploys the single atlas application image plus a CronJob that drains the
+  transactional outbox. BYO Postgres, S3-compatible object store, and SMTP relay.
+type: application
+# Chart version — bump on chart changes (SemVer).
+version: 0.1.0
+# Application version — tracks the atlas image this chart was written for.
+appVersion: "0.1.0"
+home: https://github.com/eymen34/atlas
+sources:
+  - https://github.com/eymen34/atlas
+maintainers:
+  - name: atlas maintainers

@@ -1,0 +1,49 @@
+{{- if .Values.drainCron.enabled }}
+# Helm-parameterized form of deploy/cron/k8s-cronjob.yaml. The endpoint path
+# (/internal/tasks/drain-outbox) and header (X-Internal-Secret) are byte-identical to that
+# file; only the target host (in-cluster Service DNS — NOT APP_BASE_URL) and the Secret
+# reference are templated. SKIP LOCKED makes overlap safe; the outbox owns per-row backoff.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "tracker.fullname" . }}-drain-outbox
+  labels:
+    {{- include "tracker.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.drainCron.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # the next tick retries; the outbox owns per-row backoff
+      activeDeadlineSeconds: 50
+      template:
+        metadata:
+          labels:
+            {{- include "tracker.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: drain
+              image: {{ .Values.drainCron.image | quote }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              env:
+                - name: APP_URL
+                  value: {{ include "tracker.serviceDns" . | quote }}
+                - name: OUTBOX_DRAIN_SHARED_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "tracker.secretName" . }}
+                      key: OUTBOX_DRAIN_SHARED_SECRET
+              command:
+                - /bin/sh
+                - -c
+                - >
+                  curl -fsS -X POST
+                  -H "X-Internal-Secret: ${OUTBOX_DRAIN_SHARED_SECRET}"
+                  "${APP_URL}/internal/tasks/drain-outbox"
+{{- end }}

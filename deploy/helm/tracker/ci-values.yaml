@@ -1,0 +1,11 @@
+# CI overlay so `helm template -f ci-values.yaml` exercises the ingress branch
+# (default values.yaml keeps ingress.enabled=false). Used only by the helm-lint CI
+# job + local render checks — NOT a deployment values file.
+ingress:
+  enabled: true
+  className: nginx
+  host: tracker.ci.example.com
+  tls:
+    - secretName: tracker-tls
+      hosts:
+        - tracker.ci.example.com
