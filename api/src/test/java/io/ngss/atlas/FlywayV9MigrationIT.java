@@ -145,6 +145,24 @@ class FlywayV9MigrationIT {
   }
 
   @Test
+  void v14TicketSearchMigrationIsApplied() {
+    // Existence check (not latest==N) per migration_it_no_version_pinning. V14 adds the
+    // search_doc tsvector generated column + GIN index (T-028).
+    Integer v14Applied =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM flyway_schema_history WHERE version = '14' AND success = true",
+            Integer.class);
+    assertThat(v14Applied).isEqualTo(1);
+
+    Integer ginIndex =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM pg_indexes "
+                + "WHERE indexname = 'ix_tickets_search_doc' AND indexdef ILIKE '%using gin%'",
+            Integer.class);
+    assertThat(ginIndex).isEqualTo(1);
+  }
+
+  @Test
   void backfillIsLowercaseDeterministicAndCollisionSuffixed() {
     assertThat(handle(ALICE_1)).isEqualTo("alice");
     assertThat(handle(ALICE_2)).isEqualTo("alice-2"); // uppercase email → lowercased + suffixed

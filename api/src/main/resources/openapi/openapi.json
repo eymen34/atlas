@@ -1630,6 +1630,162 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/projects/{projectId}/tickets/search" : {
+      "get" : {
+        "description" : "Ranked by ts_rank_cd then updated_at (both DESC), english stemming, soft-deleted excluded. size clamped 1..100. Non-member → 404 (existence-leak prevention).",
+        "operationId" : "searchProjectTickets",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "projectId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "q",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 25
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Search results (paged envelope)"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Missing q parameter"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Project not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Full-text search a project's tickets (any member)",
+        "tags" : [ "search" ]
+      }
+    },
+    "/api/search/tickets" : {
+      "get" : {
+        "description" : "Scoped to the caller's project memberships ENTIRELY in SQL (a project_members subquery) — never a Java post-filter. Same ranking + clamping as the project-scoped endpoint.",
+        "operationId" : "searchAllTickets",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "q",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 25
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Search results (paged envelope)"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Missing q parameter"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponseTicketSearchResult"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Full-text search across all of the caller's projects",
+        "tags" : [ "search" ]
+      }
+    },
     "/api/tickets/{idOrKey}" : {
       "get" : {
         "description" : "A segment matching ^[A-Z][A-Z0-9]{1,9}-\\d+$ is treated as a project-key/number display key; otherwise it is parsed as a UUID. Returns 404 if no live ticket the caller can see matches.",
@@ -3189,6 +3345,29 @@
           }
         }
       },
+      "PagedResponseTicketSearchResult" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TicketSearchResult"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
       "ProjectResponse" : {
         "type" : "object",
         "properties" : {
@@ -3324,6 +3503,43 @@
           "status" : {
             "type" : "string",
             "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "TicketSearchResult" : {
+        "type" : "object",
+        "properties" : {
+          "projectId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "projectKey" : {
+            "type" : "string"
+          },
+          "rank" : {
+            "type" : "number",
+            "format" : "double"
+          },
+          "snippet" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          },
+          "ticketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "ticketKey" : {
+            "type" : "string"
           },
           "title" : {
             "type" : "string"
