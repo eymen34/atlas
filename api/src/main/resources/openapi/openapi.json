@@ -615,6 +615,37 @@
         "tags" : [ "labels" ]
       }
     },
+    "/api/links/{id}" : {
+      "delete" : {
+        "description" : "Removes BOTH reciprocal rows in one transaction and writes a LINK_REMOVED activity row on both tickets. Any member of the project may delete, regardless of who created the link. A second delete of the same id → 404.",
+        "operationId" : "deleteTicketLink",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Link deleted"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "description" : "Link not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Delete a link (any project member)",
+        "tags" : [ "links" ]
+      }
+    },
     "/api/notifications" : {
       "get" : {
         "description" : "Paged (size clamped 1..100). unread=true filters to unread only. Each row is enriched with projectKey, ticketKey, ticketTitle, actorDisplayName.",
@@ -2168,6 +2199,147 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/tickets/{id}/links" : {
+      "get" : {
+        "description" : "Bare array, each enriched with the target's ticketKey/title/status and a targetDeleted flag (soft-deleted targets are kept, not filtered). Grouping by relation is client-side.",
+        "operationId" : "listTicketLinks",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LinkResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Links listed"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LinkResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/LinkResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a ticket's outgoing links, newest first (any member)",
+        "tags" : [ "links" ]
+      },
+      "post" : {
+        "description" : "Accepts BLOCKS, DUPLICATES, or RELATES_TO. Persists the relation AND its inverse (both rows in one transaction) and writes a LINK_ADDED activity row on both tickets. Target must be in the same project. One relation per pair — a second link between the same pair (either direction) → 409.",
+        "operationId" : "createTicketLink",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateLinkRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description" : "Link created"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description" : "Self-link, unknown/other-project key, or an inverse relation type"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkResponse"
+                }
+              }
+            },
+            "description" : "A link already exists between these tickets"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Link this ticket to another in the same project (any member)",
+        "tags" : [ "links" ]
+      }
+    },
     "/api/tickets/{id}/transition" : {
       "post" : {
         "description" : "Any status may transition to any other (MVP — no state-machine). A transition to the current status is a 200 no-op and publishes no event.",
@@ -2560,6 +2732,20 @@
           }
         }
       },
+      "CreateLinkRequest" : {
+        "required" : [ "relation", "toTicketKey" ],
+        "type" : "object",
+        "properties" : {
+          "relation" : {
+            "type" : "string",
+            "description" : "Only BLOCKS, DUPLICATES, RELATES_TO are valid on create — IS_BLOCKED_BY and IS_DUPLICATED_BY are server-derived and rejected with 400.",
+            "enum" : [ "BLOCKS", "IS_BLOCKED_BY", "DUPLICATES", "IS_DUPLICATED_BY", "RELATES_TO" ]
+          },
+          "toTicketKey" : {
+            "type" : "string"
+          }
+        }
+      },
       "CreateProjectRequest" : {
         "required" : [ "key", "name" ],
         "type" : "object",
@@ -2763,6 +2949,48 @@
             "type" : "string"
           },
           "projectId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "LinkResponse" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "createdBy" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "fromTicketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "relation" : {
+            "type" : "string",
+            "enum" : [ "BLOCKS", "IS_BLOCKED_BY", "DUPLICATES", "IS_DUPLICATED_BY", "RELATES_TO" ]
+          },
+          "targetDeleted" : {
+            "type" : "boolean"
+          },
+          "targetStatus" : {
+            "type" : "string",
+            "enum" : [ "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE" ]
+          },
+          "targetTicketKey" : {
+            "type" : "string"
+          },
+          "targetTitle" : {
+            "type" : "string"
+          },
+          "toTicketId" : {
             "type" : "string",
             "format" : "uuid"
           }
