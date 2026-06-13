@@ -20,8 +20,11 @@
     "e2e:local": "playwright test --project=e2e-local"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.4.0",
     "@tanstack/react-query": "5.59.20",
+    "@tanstack/react-virtual": "^3.13.0",
     "@tiptap/extension-mention": "2.27.2",
     "@tiptap/react": "2.27.2",
     "@tiptap/starter-kit": "2.27.2",

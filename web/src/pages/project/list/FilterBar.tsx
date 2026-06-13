@@ -26,6 +26,8 @@ export interface FilterBarProps {
   onChange: (next: TicketFilters) => void;
   members: Member[];
   labels: Label[];
+  /** Board reuse (T-027): hide the Status control — status is the column axis, not a filter. */
+  hideStatus?: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface FilterBarProps {
  * EVERY control change resets the page to 0 (the URL writer preserves page only
  * for the pager).
  */
-export function FilterBar({ value, onChange, members, labels }: FilterBarProps) {
+export function FilterBar({ value, onChange, members, labels, hideStatus = false }: FilterBarProps) {
   function toggleStatus(status: TicketStatus, checked: boolean) {
     const current = value.status ?? [];
     const next = checked ? [...current, status] : current.filter((s) => s !== status);
@@ -64,27 +66,29 @@ export function FilterBar({ value, onChange, members, labels }: FilterBarProps) 
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="filter-bar">
-      {/* Status */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
-            Status{statusCount > 0 ? ` (${statusCount})` : ''}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuLabel>Status</DropdownMenuLabel>
-          {STATUS_OPTIONS.map((status) => (
-            <DropdownMenuCheckboxItem
-              key={status}
-              checked={value.status?.includes(status) ?? false}
-              onCheckedChange={(checked) => toggleStatus(status, checked === true)}
-              onSelect={(e) => e.preventDefault()}
-            >
-              {status}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Status — hidden on the board, where status is the column axis (T-027). */}
+      {!hideStatus && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              Status{statusCount > 0 ? ` (${statusCount})` : ''}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Status</DropdownMenuLabel>
+            {STATUS_OPTIONS.map((status) => (
+              <DropdownMenuCheckboxItem
+                key={status}
+                checked={value.status?.includes(status) ?? false}
+                onCheckedChange={(checked) => toggleStatus(status, checked === true)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {status}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {/* Priority */}
       <DropdownMenu>
