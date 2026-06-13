@@ -221,10 +221,30 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  helm-lint:
+    name: Helm lint + template (deploy/helm/tracker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: helm lint
+        run: helm lint ./deploy/helm/tracker
+
+      - name: helm template (default + ci-values overlay)
+        run: |
+          set -euo pipefail
+          # Default render, then the ci-values overlay so the ingress branch is exercised.
+          helm template tracker ./deploy/helm/tracker > /dev/null
+          helm template tracker ./deploy/helm/tracker -f ./deploy/helm/tracker/ci-values.yaml > /dev/null
+
   pr-gate:
     name: PR gate
     runs-on: ubuntu-latest
-    needs: [backend, frontend, docker-build, e2e-smoke]
+    needs: [backend, frontend, docker-build, e2e-smoke, helm-lint]
     if: always()
     steps:
       - name: Fail if any required job failed
@@ -232,11 +252,13 @@ jobs:
           if [ "${{ needs.backend.result }}" != "success" ] \
               || [ "${{ needs.frontend.result }}" != "success" ] \
               || [ "${{ needs.docker-build.result }}" != "success" ] \
-              || [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
+              || [ "${{ needs.e2e-smoke.result }}" != "success" ] \
+              || [ "${{ needs.helm-lint.result }}" != "success" ]; then
             echo "::error::one or more required PR jobs failed"
             echo "backend=${{ needs.backend.result }}"
             echo "frontend=${{ needs.frontend.result }}"
             echo "docker-build=${{ needs.docker-build.result }}"
             echo "e2e-smoke=${{ needs.e2e-smoke.result }}"
+            echo "helm-lint=${{ needs.helm-lint.result }}"
             exit 1
           fi

@@ -1,0 +1,149 @@
+# Default values for the tracker chart.
+# Every knob is documented inline. Override with `--values my-values.yaml` or `--set`.
+# Secrets are NEVER committed here — see `existingSecret` / `secrets` below.
+
+# Optional name overrides (standard Helm convention). Leave empty for the default
+# `<release>-tracker` naming (a release named `tracker` collapses to just `tracker`).
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Image ──────────────────────────────────────────────────────────────────
+# No image is published upstream (GHCR push is deferred). Build the production
+# /Dockerfile (4-stage AppCDS) and push to your OWN registry, or use a locally
+# built `atlas:latest`. Override image.repository to your registry path.
+image:
+  repository: atlas # e.g. ghcr.io/<org>/atlas or <registry>/atlas — placeholder default
+  tag: "latest" # the image tag your registry holds (atlas:latest from /Dockerfile)
+  pullPolicy: IfNotPresent
+# Optional registry pull secrets (names of pre-created docker-registry Secrets).
+imagePullSecrets: []
+# - name: my-registry-cred
+
+# Number of app replicas. The app is stateless (JWT auth, no session) so it scales
+# horizontally; the outbox drain CronJob is a SEPARATE singleton (not per-replica).
+replicaCount: 1
+
+# ── Resources (LOCKED — cold-start budget /ready <=5s on 1 vCPU / 512 MB) ─────
+resources:
+  requests:
+    cpu: "1"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+
+# ── Pod-level security context (committed hardened defaults) ─────────────────
+# runAsUser 1000 matches the non-root `atlas` user baked into /Dockerfile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# ── Container-level security context (committed hardened defaults) ───────────
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem is intentionally NOT set — the embedded Tomcat needs a
+  # writable temp dir; the container already runs unprivileged + non-root.
+
+# ── Service ──────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080 # matches /Dockerfile EXPOSE 8080
+
+# ── Ingress (disabled by default — expose via your own LB/Ingress as needed) ──
+ingress:
+  enabled: false
+  className: "" # e.g. nginx
+  annotations: {}
+  # cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: tracker.example.com
+  path: /
+  pathType: Prefix
+  tls: [] # - secretName: tracker-tls
+  #   hosts: [tracker.example.com]
+
+# ── Probes (paths are the app's custom /health + /ready — NEVER /actuator/health,
+#    which aggregates the DB/mail indicators; see mail_health_indicator_off) ───
+probes:
+  liveness: # GET /health — cheap, no DB touch
+    initialDelaySeconds: 40 # generous cold-start headroom before liveness can kill
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness: # GET /ready — DB ping; gates traffic, never kills
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6 # ~ generous headroom while migrations/cold-start finish
+
+# ── Non-secret application env (rendered into a ConfigMap) ───────────────────
+# Names mirror .env.example EXACTLY. Secrets live under `secrets`/`existingSecret`,
+# NEVER here. APP_DATABASE_STARTUP_CHECK_ENABLED is image-build-only and is
+# DELIBERATELY ABSENT — never set it in a runtime deployment.
+config:
+  # Absolute base URL the app uses to build links in outgoing email.
+  APP_BASE_URL: "http://localhost:8080"
+  # JDBC URL (host + database only — the password is a SECRET, not here).
+  APP_DATABASE_URL: "jdbc:postgresql://postgres:5432/atlas"
+  # HikariCP pool sizing (read via System.getenv in DataSourceConfig).
+  DB_POOL_MAX: "10"
+  DB_POOL_MIN: "2"
+  # Object storage (S3-compatible). ENDPOINT = server-side; PUBLIC_ENDPOINT = the
+  # host embedded in presigned URLs handed to the browser (must be client-resolvable).
+  OBJECT_STORAGE_ENDPOINT: "http://minio:9000"
+  OBJECT_STORAGE_PUBLIC_ENDPOINT: "https://objects.example.com"
+  OBJECT_STORAGE_REGION: "us-east-1"
+  OBJECT_STORAGE_BUCKET: "atlas-uploads"
+  # Max attachment upload size in bytes (default 25 MiB).
+  ATTACHMENT_MAX_SIZE_BYTES: "26214400"
+  # Auth token lifetimes + bcrypt cost.
+  JWT_ACCESS_TTL_SECONDS: "900"
+  REFRESH_TOKEN_TTL_DAYS: "30"
+  BCRYPT_COST: "12"
+  # SMTP (non-secret half — username/password are SECRETS).
+  SMTP_HOST: "smtp.example.com"
+  SMTP_PORT: "587"
+  SMTP_FROM: "noreply@example.com"
+  SMTP_STARTTLS: "true"
+  # Feature flags.
+  FEATURE_WATCHERS_ENABLED: "true"
+  FEATURE_INLINE_THUMBNAILS_ENABLED: "true"
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# Prod: set `existingSecret` to a Secret you manage out-of-band (sealed-secrets,
+# external-secrets, vault, `kubectl create secret`). Then the chart creates NO
+# Secret and only REFERENCES yours — it MUST contain all the keys below.
+# Dev/quick-start: leave `existingSecret` empty and supply values via
+# `--set secrets.JWT_SECRET=...` (the chart renders a Secret from `secrets`).
+existingSecret: ""
+secrets:
+  JWT_SECRET: ""
+  OUTBOX_DRAIN_SHARED_SECRET: ""
+  APP_DATABASE_USERNAME: ""
+  APP_DATABASE_PASSWORD: ""
+  SMTP_USERNAME: ""
+  SMTP_PASSWORD: ""
+  OBJECT_STORAGE_ACCESS_KEY: ""
+  OBJECT_STORAGE_SECRET_KEY: ""
+
+# ── Outbox drain CronJob (external trigger for POST /internal/tasks/drain-outbox) ─
+# There is NO in-process scheduler — async work (email, S3 deletes) is drained by
+# this CronJob hitting the in-cluster Service over the shared secret. SKIP LOCKED
+# makes overlap safe; the outbox owns per-row exponential backoff.
+drainCron:
+  enabled: true
+  schedule: "* * * * *" # every minute
+  image: curlimages/curl:8.10.1
+  # The CronJob reads OUTBOX_DRAIN_SHARED_SECRET from the same Secret as the app
+  # (chart-created or existingSecret) — see _helpers tracker.secretName.
+
+# Extra pod scheduling knobs (optional).
+nodeSelector: {}
+tolerations: []
+affinity: {}
