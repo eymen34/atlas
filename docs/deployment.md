@@ -12,12 +12,20 @@ cron. Only the *packaging* and *who runs the cron* differ between modes.
 - Full env-var reference: [`docs/configuration.md`](./configuration.md). Internal engineering
   rationale (not needed to deploy): [`docs/architecture-decisions.md`](./architecture-decisions.md).
 
-## Image policy (no published image yet)
+## Image policy
 
-No image is published upstream (GHCR push is deferred). Build the production `/Dockerfile`
-(4-stage AppCDS) and push to **your own** registry —
-`docker build -t <registry>/atlas:<tag> . && docker push <registry>/atlas:<tag>` — or use a
-locally-built `atlas:latest`. Every mode references that image; none of them publish one.
+The production image is published to `ghcr.io/eymen34/atlas` (`:latest` on every `main` merge,
+`:<git-sha>` for pinned deploys, `:<version>` on `v*` releases) by
+`.github/workflows/publish.yml`. Pull it with `docker pull ghcr.io/eymen34/atlas:latest`.
+
+- **Local dev (docker-compose):** `atlas:latest` refers to a **locally built** image unless you
+  `docker pull ghcr.io/eymen34/atlas:latest` (and retag) first — `docker compose up --build`
+  builds it from `/Dockerfile`.
+- **Helm / Cloud Run:** the default `values.yaml` already points at GHCR; for Cloud Run pass the
+  `ghcr.io/eymen34/atlas:<tag>` reference directly.
+
+To build + push to your own registry instead:
+`docker build -t <registry>/atlas:<tag> . && docker push <registry>/atlas:<tag>`.
 
 ---
 
