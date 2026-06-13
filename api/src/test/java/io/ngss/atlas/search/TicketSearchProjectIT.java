@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessException;
 
 /** Project-scoped search: ranking, stemming, clamps, soft-delete, authz, generated column (T-028). */
 class TicketSearchProjectIT extends SearchITBase {
@@ -99,7 +99,11 @@ class TicketSearchProjectIT extends SearchITBase {
     TicketRef t = createTicket(f.token(), f.eng(), "indexed ticket", "body");
     assertThat(searchDoc(t.id())).isNotBlank(); // Postgres computed it
 
-    // A raw INSERT that lists search_doc (a generated column) is rejected.
+    // A raw INSERT that lists search_doc (a generated column) is rejected by Postgres.
+    // PG raises a syntax-class SQLSTATE (42601/0A000 "cannot insert a non-DEFAULT value
+    // into column"), which Spring translates to BadSqlGrammarException — NOT
+    // DataIntegrityViolationException (23xxx). Assert the common superclass so the test
+    // pins the INVARIANT (the write is refused), not a fragile translated subclass.
     assertThatThrownBy(
             () ->
                 jdbc.update(
@@ -110,7 +114,11 @@ class TicketSearchProjectIT extends SearchITBase {
                     UUID.randomUUID().toString(),
                     f.eng(),
                     f.alice().toString()))
-        .isInstanceOf(DataIntegrityViolationException.class);
+        .isInstanceOf(DataAccessException.class);
+
+    // Stronger signal: no row landed (the rejected INSERT wrote nothing).
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM tickets WHERE number = 9999", Integer.class))
+        .isZero();
   }
 
   @Test
