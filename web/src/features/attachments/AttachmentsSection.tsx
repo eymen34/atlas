@@ -25,6 +25,20 @@ interface UploadTask {
   error?: string;
 }
 
+/** Human text for a finalize FAILED reason. */
+function finalizeReason(reason?: string): string {
+  switch (reason) {
+    case 'size_mismatch':
+      return 'Uploaded file size did not match';
+    case 'content_type_mismatch':
+      return 'Uploaded file type did not match';
+    case 'object_missing':
+      return 'Upload was not received';
+    default:
+      return 'Upload could not be verified';
+  }
+}
+
 export interface AttachmentsSectionProps {
   /** Ticket UUID — attachment endpoints + cache key. */
   ticketId: string;
@@ -75,15 +89,23 @@ export function AttachmentsSection({
       await uploadToPresignedUrl(init.uploadUrl, file, contentType, (percent) =>
         setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, progress: percent } : u)))
       );
-      await finalizeAttachment(init.attachmentId);
+      const result = await finalizeAttachment(init.attachmentId);
+      if (result.status === 'FAILED') {
+        // A mismatch is a 200 with status FAILED — surface it as an inline error.
+        markError(key, finalizeReason(result.reason));
+        return;
+      }
       setUploads((prev) => prev.filter((u) => u.key !== key));
       invalidate();
     } catch (err) {
-      const message = apiErrorMessage(err, 'Upload failed');
-      setUploads((prev) =>
-        prev.map((u) => (u.key === key ? { ...u, status: 'error', error: message } : u))
-      );
+      markError(key, apiErrorMessage(err, 'Upload failed'));
     }
+  }
+
+  function markError(key: number, error: string) {
+    setUploads((prev) =>
+      prev.map((u) => (u.key === key ? { ...u, status: 'error', error } : u))
+    );
   }
 
   function handleFiles(files: FileList | null) {

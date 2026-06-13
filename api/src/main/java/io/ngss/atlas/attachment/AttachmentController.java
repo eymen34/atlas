@@ -2,6 +2,7 @@ package io.ngss.atlas.attachment;
 
 import io.ngss.atlas.attachment.dto.AttachmentResponse;
 import io.ngss.atlas.attachment.dto.DownloadUrlResponse;
+import io.ngss.atlas.attachment.dto.FinalizeResponse;
 import io.ngss.atlas.attachment.dto.InitUploadRequest;
 import io.ngss.atlas.attachment.dto.InitUploadResponse;
 import io.ngss.atlas.security.CurrentUser;
@@ -81,19 +82,23 @@ public class AttachmentController {
       operationId = "finalizeAttachment",
       summary = "Finalize an upload — server verifies the object (uploader only)",
       description =
-          "HEADs the uploaded object and verifies its actual size and content-type match "
-              + "the declared values; success → READY + ATTACHMENT_ADDED activity (idempotent: "
-              + "already-READY → 204). Mismatch or missing object → FAILED + 400 (retry allowed). "
-              + "Only the uploader may finalize; a foreign PENDING row → 404.")
+          "HEADs the uploaded object and verifies its actual size and content-type match the "
+              + "declared values. Returns 200 with {status} in either case: success → READY + "
+              + "ATTACHMENT_ADDED activity; mismatch or missing object → FAILED + reason (retry "
+              + "allowed). A mismatch is a state-machine outcome, NOT a 4xx — finalize must commit "
+              + "the FAILED status (an exception would roll it back; jpa_rollback_only_trap). "
+              + "Idempotent: already-READY → 200 READY. Only the uploader may finalize; a foreign "
+              + "PENDING row → 404.")
   @ApiResponses({
-    @ApiResponse(responseCode = "204", description = "Finalized (or already finalized)"),
-    @ApiResponse(responseCode = "400", description = "Object missing or size/content-type mismatch"),
+    @ApiResponse(
+        responseCode = "200",
+        description = "Finalize result (READY or FAILED)",
+        content = @Content(schema = @Schema(implementation = FinalizeResponse.class))),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
     @ApiResponse(responseCode = "404", description = "Attachment not found or not the uploader")
   })
-  @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
-  public void finalizeAttachment(@PathVariable UUID id) {
-    attachmentService.finalizeUpload(id, CurrentUser.id());
+  public ResponseEntity<FinalizeResponse> finalizeAttachment(@PathVariable UUID id) {
+    return ResponseEntity.ok(attachmentService.finalizeUpload(id, CurrentUser.id()));
   }
 
   @GetMapping("/api/tickets/{id}/attachments")

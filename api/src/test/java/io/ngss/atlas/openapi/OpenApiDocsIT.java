@@ -346,6 +346,7 @@ class OpenApiDocsIT {
     assertThat(schemas.has("InitUploadRequest")).as("InitUploadRequest schema").isTrue();
     assertThat(schemas.has("InitUploadResponse")).as("InitUploadResponse schema").isTrue();
     assertThat(schemas.has("AttachmentResponse")).as("AttachmentResponse schema").isTrue();
+    assertThat(schemas.has("FinalizeResponse")).as("FinalizeResponse schema").isTrue();
   }
 
   @Test

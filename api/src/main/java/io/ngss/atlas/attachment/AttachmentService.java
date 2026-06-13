@@ -5,6 +5,7 @@ import io.ngss.atlas.activity.payload.AttachmentAddedPayload;
 import io.ngss.atlas.activity.payload.AttachmentRemovedPayload;
 import io.ngss.atlas.attachment.dto.AttachmentResponse;
 import io.ngss.atlas.attachment.dto.DownloadUrlResponse;
+import io.ngss.atlas.attachment.dto.FinalizeResponse;
 import io.ngss.atlas.attachment.dto.InitUploadRequest;
 import io.ngss.atlas.attachment.dto.InitUploadResponse;
 import io.ngss.atlas.domain.ActivityEventType;
@@ -134,19 +135,24 @@ public class AttachmentService {
   }
 
   @Transactional
-  public void finalizeUpload(UUID attachmentId, UUID callerId) {
+  public FinalizeResponse finalizeUpload(UUID attachmentId, UUID callerId) {
     Attachment attachment = loadLive(attachmentId);
     Ticket ticket = loadTicket(attachment.getTicketId());
     guard.requireMember(ticket.getProjectId());
     // Uploader-only: a member who is not the uploader cannot finalize a foreign
-    // PENDING row → uniform 404 (no ownership leak).
+    // PENDING row → uniform 404 (no ownership leak). These guards run BEFORE any state
+    // mutation, so throwing here rolls back nothing.
     if (!attachment.getUploadedBy().equals(callerId)) {
       throw new AttachmentNotFoundException(attachmentId);
     }
     if (attachment.getStatus() == AttachmentStatus.READY) {
-      return; // idempotent no-op (already finalized)
+      return FinalizeResponse.ready(); // idempotent no-op (already finalized)
     }
 
+    // A mismatch is a STATE-MACHINE outcome, NOT an exception: we must COMMIT the
+    // FAILED status write. Throwing an exception out of this @Transactional method
+    // marks the tx rollback-only and silently discards markFailed() → the row stays
+    // PENDING (jpa_rollback_only_trap). So every mismatch path returns FAILED + 200.
     HeadObjectResponse head;
     try {
       head =
@@ -156,20 +162,14 @@ public class AttachmentService {
                   .key(attachment.getObjectKey())
                   .build());
     } catch (S3Exception e) {
-      // Missing object (NoSuchKey) or any HEAD failure → FAILED, retry allowed.
-      attachment.markFailed();
-      attachmentRepository.save(attachment);
-      throw new AttachmentValidationException("uploaded object not found or unreadable");
+      return markFailed(attachment, "object_missing");
     }
 
-    boolean sizeOk =
-        head.contentLength() != null && head.contentLength() == attachment.getSizeBytes();
-    boolean typeOk = contentTypeMatches(head.contentType(), attachment.getContentType());
-    if (!sizeOk || !typeOk) {
-      attachment.markFailed();
-      attachmentRepository.save(attachment);
-      throw new AttachmentValidationException(
-          "uploaded object does not match the declared size or content type");
+    if (head.contentLength() == null || head.contentLength() != attachment.getSizeBytes()) {
+      return markFailed(attachment, "size_mismatch");
+    }
+    if (!contentTypeMatches(head.contentType(), attachment.getContentType())) {
+      return markFailed(attachment, "content_type_mismatch");
     }
 
     Instant now = Instant.now();
@@ -189,6 +189,13 @@ public class AttachmentService {
             attachment.getObjectKey(),
             attachment.getContentType(),
             now));
+    return FinalizeResponse.ready();
+  }
+
+  private FinalizeResponse markFailed(Attachment attachment, String reason) {
+    attachment.markFailed();
+    attachmentRepository.save(attachment); // committed (no exception) → status persists
+    return FinalizeResponse.failed(reason);
   }
 
   @Transactional(readOnly = true)

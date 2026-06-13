@@ -55,7 +55,7 @@ class AttachmentThumbnailIT extends AttachmentITBase {
     init.then().statusCode(201);
     String id = init.jsonPath().getString("attachmentId");
     assertThat(httpPut(init.jsonPath().getString("uploadUrl"), body, contentType)).isEqualTo(200);
-    finalizeUpload(f.token(), id).then().statusCode(204);
+    finalizeUpload(f.token(), id).then().statusCode(200).body("status", org.hamcrest.Matchers.equalTo("READY"));
     return id;
   }
 

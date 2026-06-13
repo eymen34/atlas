@@ -16,7 +16,7 @@ class AttachmentAuthzIT extends AttachmentITBase {
     Response init = initUpload(token, ticket, filename, "text/plain", body.length);
     String id = init.jsonPath().getString("attachmentId");
     httpPut(init.jsonPath().getString("uploadUrl"), body, "text/plain");
-    finalizeUpload(token, id).then().statusCode(204);
+    finalizeUpload(token, id).then().statusCode(200);
     return id;
   }
 

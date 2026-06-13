@@ -103,7 +103,7 @@ describe('AttachmentsSection', () => {
       headers: { 'Content-Type': 'application/pdf' },
     });
     vi.mocked(uploadToPresignedUrl).mockResolvedValue(undefined);
-    vi.mocked(finalizeAttachment).mockResolvedValue(undefined);
+    vi.mocked(finalizeAttachment).mockResolvedValue({ status: 'READY' });
 
     renderWithProviders(
       <AttachmentsSection ticketId={TICKET} currentUserId="u1" isProjectAdmin={false} />
@@ -117,6 +117,28 @@ describe('AttachmentsSection', () => {
       expect(initAttachmentUpload).toHaveBeenCalledWith(TICKET, 'note.pdf', 'application/pdf', 5)
     );
     await waitFor(() => expect(finalizeAttachment).toHaveBeenCalledWith('a9'));
+  });
+
+  it('surfaces a FAILED finalize (mismatch) as an inline error', async () => {
+    vi.mocked(listAttachments).mockResolvedValue([]);
+    vi.mocked(initAttachmentUpload).mockResolvedValue({
+      attachmentId: 'a9',
+      uploadUrl: 'http://minio/put',
+      headers: {},
+    });
+    vi.mocked(uploadToPresignedUrl).mockResolvedValue(undefined);
+    vi.mocked(finalizeAttachment).mockResolvedValue({ status: 'FAILED', reason: 'size_mismatch' });
+
+    renderWithProviders(
+      <AttachmentsSection ticketId={TICKET} currentUserId="u1" isProjectAdmin={false} />
+    );
+
+    const input = screen.getByTestId('attachment-input') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'note.pdf', { type: 'application/pdf' })] },
+    });
+
+    expect(await screen.findByText('Uploaded file size did not match')).toBeInTheDocument();
   });
 
   it('shows an inline error when the upload fails', async () => {

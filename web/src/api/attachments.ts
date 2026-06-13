@@ -73,8 +73,15 @@ export async function initAttachmentUpload(
   };
 }
 
-export async function finalizeAttachment(id: string): Promise<void> {
-  await AttachmentsService.finalizeAttachment(id);
+/** Finalize result — a mismatch is a normal 200 outcome (status FAILED), not an error. */
+export interface FinalizeResult {
+  status: 'READY' | 'FAILED';
+  reason?: string;
+}
+
+export async function finalizeAttachment(id: string): Promise<FinalizeResult> {
+  const res = await AttachmentsService.finalizeAttachment(id);
+  return { status: res.status === 'READY' ? 'READY' : 'FAILED', reason: res.reason };
 }
 
 export async function listAttachments(ticketId: string): Promise<Attachment[]> {

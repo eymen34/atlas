@@ -56,9 +56,20 @@ BaseIT teardown deletes `attachments` FIRST.
    self-authorizing).
 3. **finalize** `POST /api/attachments/{id}/finalize` (**uploader only** — a foreign
    PENDING row → 404) — HEADs the object and verifies the **actual** `contentLength`
-   and `contentType` match the declared values: success → `READY` + finalized_at +
-   `ATTACHMENT_ADDED` activity (synchronous, atomic); mismatch or missing object →
-   `FAILED` + 400 (retry allowed). Idempotent: already-`READY` → 204 no-op.
+   and `contentType` match the declared values. Returns **200** with a
+   `FinalizeResponse{status, reason?}` in BOTH cases: success → `status="READY"` +
+   finalized_at + `ATTACHMENT_ADDED` activity + thumbnail event (synchronous, atomic);
+   mismatch or missing object → `status="FAILED"` + `reason`
+   (`size_mismatch`/`content_type_mismatch`/`object_missing`), no activity, no event.
+   Idempotent: already-`READY` → 200 `READY` no-op.
+
+   **A mismatch is a state-machine outcome, NOT an HTTP 4xx.** finalize must COMMIT the
+   `FAILED` status write; throwing an exception out of the `@Transactional` method would
+   mark the tx rollback-only and silently discard `markFailed()`, leaving the row stuck
+   `PENDING` (`jpa_rollback_only_trap`). A `FAILED` row is re-HEADable, so re-uploading
+   the correct bytes and finalizing again recovers it. (Init still 400s for oversize /
+   disallowed content type — that validation runs BEFORE any row is written, so there is
+   nothing to roll back.)
 
 ### Size truth is the finalize HEAD, not the PUT
 

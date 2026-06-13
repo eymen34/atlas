@@ -8,7 +8,14 @@ import io.restassured.response.Response;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Upload lifecycle: init → presigned PUT → finalize, plus validation/idempotency (T-025). */
+/**
+ * Upload lifecycle: init → presigned PUT → finalize, plus validation/idempotency (T-025).
+ *
+ * <p>finalize is a STATE-MACHINE step: a size/content-type mismatch returns 200 with
+ * {@code status="FAILED"}, NOT a 4xx — an exception would roll back the FAILED write
+ * (jpa_rollback_only_trap). Init still 400s for oversize / disallowed content type
+ * (validation BEFORE any row is written).
+ */
 class AttachmentFlowIT extends AttachmentITBase {
 
   private record Fixture(String token, String ticket) {}
@@ -33,7 +40,7 @@ class AttachmentFlowIT extends AttachmentITBase {
     assertThat(init.jsonPath().getString("headers.Content-Type")).isEqualTo("application/pdf");
 
     assertThat(httpPut(uploadUrl, body, "application/pdf")).isEqualTo(200);
-    finalizeUpload(f.token(), attachmentId).then().statusCode(204);
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200).body("status", equalTo("READY"));
 
     assertThat(attachmentStatus(attachmentId)).isEqualTo("READY");
     assertThat(countActivity(f.ticket(), "ATTACHMENT_ADDED")).isEqualTo(1);
@@ -68,7 +75,7 @@ class AttachmentFlowIT extends AttachmentITBase {
   }
 
   @Test
-  void finalizeWithSizeMismatch_marksFailed_and400() {
+  void finalizeWithSizeMismatch_returnsFailed_andWritesNoActivity() {
     Fixture f = aliceWithTicket();
     Response init = initUpload(f.token(), f.ticket(), "f.txt", "text/plain", 100);
     String attachmentId = init.jsonPath().getString("attachmentId");
@@ -76,13 +83,18 @@ class AttachmentFlowIT extends AttachmentITBase {
 
     // Presigned PUT does NOT enforce size — upload only 50 bytes against a declared 100.
     assertThat(httpPut(uploadUrl, new byte[50], "text/plain")).isEqualTo(200);
-    finalizeUpload(f.token(), attachmentId).then().statusCode(400);
+    finalizeUpload(f.token(), attachmentId)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("FAILED"))
+        .body("reason", equalTo("size_mismatch"));
 
     assertThat(attachmentStatus(attachmentId)).isEqualTo("FAILED");
+    assertThat(countActivity(f.ticket(), "ATTACHMENT_ADDED")).isZero();
   }
 
   @Test
-  void finalizeWithContentTypeMismatch_marksFailed_and400() {
+  void finalizeWithContentTypeMismatch_returnsFailed() {
     Fixture f = aliceWithTicket();
     byte[] body = "x".getBytes(UTF_8);
     Response init = initUpload(f.token(), f.ticket(), "f.png", "image/png", body.length);
@@ -90,9 +102,14 @@ class AttachmentFlowIT extends AttachmentITBase {
 
     // Direct PUT (bypassing the signed URL) stores a DIFFERENT content type than declared.
     putObjectDirect(objectKey(attachmentId), body, "application/pdf");
-    finalizeUpload(f.token(), attachmentId).then().statusCode(400);
+    finalizeUpload(f.token(), attachmentId)
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("FAILED"))
+        .body("reason", equalTo("content_type_mismatch"));
 
     assertThat(attachmentStatus(attachmentId)).isEqualTo("FAILED");
+    assertThat(countActivity(f.ticket(), "ATTACHMENT_ADDED")).isZero();
   }
 
   @Test
@@ -103,12 +120,12 @@ class AttachmentFlowIT extends AttachmentITBase {
     String uploadUrl = init.jsonPath().getString("uploadUrl");
 
     httpPut(uploadUrl, new byte[50], "text/plain"); // wrong size
-    finalizeUpload(f.token(), attachmentId).then().statusCode(400);
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200).body("status", equalTo("FAILED"));
     assertThat(attachmentStatus(attachmentId)).isEqualTo("FAILED");
 
-    // Re-upload the correct bytes to the same key and finalize again.
+    // Re-upload the correct bytes to the same key and finalize again — FAILED is re-HEADable.
     httpPut(uploadUrl, new byte[100], "text/plain");
-    finalizeUpload(f.token(), attachmentId).then().statusCode(204);
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200).body("status", equalTo("READY"));
     assertThat(attachmentStatus(attachmentId)).isEqualTo("READY");
   }
 
@@ -120,8 +137,8 @@ class AttachmentFlowIT extends AttachmentITBase {
     String attachmentId = init.jsonPath().getString("attachmentId");
     httpPut(init.jsonPath().getString("uploadUrl"), body, "text/plain");
 
-    finalizeUpload(f.token(), attachmentId).then().statusCode(204);
-    finalizeUpload(f.token(), attachmentId).then().statusCode(204); // again → no-op
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200).body("status", equalTo("READY"));
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200).body("status", equalTo("READY"));
 
     assertThat(countActivity(f.ticket(), "ATTACHMENT_ADDED")).isEqualTo(1); // not doubled
   }
@@ -133,9 +150,10 @@ class AttachmentFlowIT extends AttachmentITBase {
     Response init = initUpload(f.token(), f.ticket(), "f.txt", "text/plain", body.length);
     String attachmentId = init.jsonPath().getString("attachmentId");
     httpPut(init.jsonPath().getString("uploadUrl"), body, "text/plain");
-    finalizeUpload(f.token(), attachmentId).then().statusCode(204);
+    finalizeUpload(f.token(), attachmentId).then().statusCode(200);
 
-    String url = downloadUrl(f.token(), attachmentId, "").then().statusCode(200).extract().jsonPath().getString("url");
+    String url =
+        downloadUrl(f.token(), attachmentId, "").then().statusCode(200).extract().jsonPath().getString("url");
     // Presigned GET is signed against the (public) endpoint and is a short-lived signed URL.
     assertThat(url).startsWith(MINIO.getS3URL()).contains(BUCKET).contains("X-Amz-Signature");
   }
@@ -152,13 +170,13 @@ class AttachmentFlowIT extends AttachmentITBase {
     Response ready = initUpload(f.token(), f.ticket(), "ready.txt", "text/plain", body.length);
     String readyId = ready.jsonPath().getString("attachmentId");
     httpPut(ready.jsonPath().getString("uploadUrl"), body, "text/plain");
-    finalizeUpload(f.token(), readyId).then().statusCode(204);
+    finalizeUpload(f.token(), readyId).then().statusCode(200);
 
     // READY then DELETED.
     Response del = initUpload(f.token(), f.ticket(), "gone.txt", "text/plain", body.length);
     String delId = del.jsonPath().getString("attachmentId");
     httpPut(del.jsonPath().getString("uploadUrl"), body, "text/plain");
-    finalizeUpload(f.token(), delId).then().statusCode(204);
+    finalizeUpload(f.token(), delId).then().statusCode(200);
     deleteAttachment(f.token(), delId).then().statusCode(204);
 
     listAttachments(f.token(), f.ticket())

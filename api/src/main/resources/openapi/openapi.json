@@ -105,7 +105,7 @@
     },
     "/api/attachments/{id}/finalize" : {
       "post" : {
-        "description" : "HEADs the uploaded object and verifies its actual size and content-type match the declared values; success → READY + ATTACHMENT_ADDED activity (idempotent: already-READY → 204). Mismatch or missing object → FAILED + 400 (retry allowed). Only the uploader may finalize; a foreign PENDING row → 404.",
+        "description" : "HEADs the uploaded object and verifies its actual size and content-type match the declared values. Returns 200 with {status} in either case: success → READY + ATTACHMENT_ADDED activity; mismatch or missing object → FAILED + reason (retry allowed). A mismatch is a state-machine outcome, NOT a 4xx — finalize must commit the FAILED status (an exception would roll it back; jpa_rollback_only_trap). Idempotent: already-READY → 200 READY. Only the uploader may finalize; a foreign PENDING row → 404.",
         "operationId" : "finalizeAttachment",
         "parameters" : [ {
           "in" : "path",
@@ -117,16 +117,34 @@
           }
         } ],
         "responses" : {
-          "204" : {
-            "description" : "Finalized (or already finalized)"
-          },
-          "400" : {
-            "description" : "Object missing or size/content-type mismatch"
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
+            "description" : "Finalize result (READY or FAILED)"
           },
           "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
             "description" : "Missing or invalid access token"
           },
           "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
             "description" : "Attachment not found or not the uploader"
           }
         },
@@ -2599,6 +2617,17 @@
         "properties" : {
           "watchers" : {
             "type" : "boolean"
+          }
+        }
+      },
+      "FinalizeResponse" : {
+        "type" : "object",
+        "properties" : {
+          "reason" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
           }
         }
       },
