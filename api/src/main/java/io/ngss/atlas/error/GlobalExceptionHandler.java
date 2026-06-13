@@ -12,6 +12,9 @@ import io.ngss.atlas.label.CrossProjectLabelException;
 import io.ngss.atlas.label.DuplicateLabelNameException;
 import io.ngss.atlas.label.LabelNotFoundException;
 import io.ngss.atlas.label.LabelValidationException;
+import io.ngss.atlas.link.LinkConflictException;
+import io.ngss.atlas.link.LinkNotFoundException;
+import io.ngss.atlas.link.LinkValidationException;
 import io.ngss.atlas.project.DuplicateMemberException;
 import io.ngss.atlas.project.DuplicateProjectKeyException;
 import io.ngss.atlas.project.ForbiddenProjectAccessException;
@@ -216,6 +219,29 @@ public class GlobalExceptionHandler {
       AttachmentValidationException ex, HttpServletRequest request) {
     log.info("attachment validation failure path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(LinkNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleLinkNotFound(
+      LinkNotFoundException ex, HttpServletRequest request) {
+    // Missing/already-deleted link, OR (post membership check) a link the caller cannot
+    // see — uniform 404, no existence leak.
+    log.info("link not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Link not found", request);
+  }
+
+  @ExceptionHandler(LinkValidationException.class)
+  public ResponseEntity<ErrorBody> handleLinkValidation(
+      LinkValidationException ex, HttpServletRequest request) {
+    log.info("link validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(LinkConflictException.class)
+  public ResponseEntity<ErrorBody> handleLinkConflict(
+      LinkConflictException ex, HttpServletRequest request) {
+    log.info("link conflict path={}", request.getRequestURI());
+    return build(HttpStatus.CONFLICT, ex.getMessage(), request);
   }
 
   @ExceptionHandler(LabelNotFoundException.class)

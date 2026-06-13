@@ -6,6 +6,7 @@ import { listMembers, projectKeys } from '@/api/projects';
 import { listLabels, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
 import { AttachmentsSection } from '@/features/attachments/AttachmentsSection';
+import { LinksSection } from '@/features/links/LinksSection';
 import { CommentsSection } from '@/features/tickets/CommentsSection';
 import { useTicketActivity, useTicketDetail } from '@/features/tickets/hooks';
 import { TicketActivityTimeline } from '@/features/tickets/TicketActivityTimeline';
@@ -23,7 +24,7 @@ import { useAuthStore } from '@/store/authStore';
  * gated on the ticket having loaded.
  */
 export default function TicketDetailPage() {
-  const { key = '' } = useParams();
+  const { projectIdOrKey = '', key = '' } = useParams();
   const navigate = useNavigate();
 
   const ticketQuery = useTicketDetail(key);
@@ -104,7 +105,12 @@ export default function TicketDetailPage() {
             currentUserId={currentUserId}
             isProjectAdmin={isProjectAdmin}
           />
-          {/* T-026: links slot */}
+          <LinksSection
+            ticketId={ticket.id}
+            idOrKey={key}
+            projectId={ticket.projectId}
+            projectKey={projectIdOrKey}
+          />
           <TicketActivityTimeline events={activityQuery.data ?? []} members={members} />
         </div>
         <TicketSidebar idOrKey={key} ticket={ticket} members={members} labels={labels} />

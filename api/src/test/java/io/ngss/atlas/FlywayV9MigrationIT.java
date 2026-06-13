@@ -128,6 +128,23 @@ class FlywayV9MigrationIT {
   }
 
   @Test
+  void v13TicketLinksMigrationIsApplied() {
+    // Existence check (not latest==N) per migration_it_no_version_pinning. V13 is the
+    // ticket_links table (T-026).
+    Integer v13Applied =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM flyway_schema_history WHERE version = '13' AND success = true",
+            Integer.class);
+    assertThat(v13Applied).isEqualTo(1);
+
+    Integer ticketLinksTable =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'ticket_links'",
+            Integer.class);
+    assertThat(ticketLinksTable).isEqualTo(1);
+  }
+
+  @Test
   void backfillIsLowercaseDeterministicAndCollisionSuffixed() {
     assertThat(handle(ALICE_1)).isEqualTo("alice");
     assertThat(handle(ALICE_2)).isEqualTo("alice-2"); // uppercase email → lowercased + suffixed

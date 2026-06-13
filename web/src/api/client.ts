@@ -4,6 +4,7 @@ import {
   CommentsService,
   ConfigService,
   LabelsService,
+  LinksService,
   NotificationsService,
   ProjectMembersService,
   ProjectResponse,
@@ -189,3 +190,11 @@ export const _getAttachmentDownloadUrlProbe: typeof AttachmentsService.getAttach
   AttachmentsService.getAttachmentDownloadUrl;
 export const _deleteAttachmentProbe: typeof AttachmentsService.deleteAttachment =
   AttachmentsService.deleteAttachment;
+
+// T-026 compile-time probes: fail `tsc -b` if codegen drifts from the link API.
+export const _createTicketLinkProbe: typeof LinksService.createTicketLink =
+  LinksService.createTicketLink;
+export const _listTicketLinksProbe: typeof LinksService.listTicketLinks =
+  LinksService.listTicketLinks;
+export const _deleteTicketLinkProbe: typeof LinksService.deleteTicketLink =
+  LinksService.deleteTicketLink;

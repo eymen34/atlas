@@ -350,6 +350,31 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t026LinkEndpointsPresentWithStableOperationIds() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    assertThat(paths.path("/api/tickets/{id}/links").path("post").path("operationId").asString())
+        .isEqualTo("createTicketLink");
+    assertThat(paths.path("/api/tickets/{id}/links").path("get").path("operationId").asString())
+        .isEqualTo("listTicketLinks");
+    assertThat(paths.path("/api/links/{id}").path("delete").path("operationId").asString())
+        .isEqualTo("deleteTicketLink");
+
+    // create documents 400 (validation) and 409 (per-pair conflict).
+    assertThat(paths.path("/api/tickets/{id}/links").path("post").path("responses").has("400"))
+        .isTrue();
+    assertThat(paths.path("/api/tickets/{id}/links").path("post").path("responses").has("409"))
+        .isTrue();
+
+    JsonNode schemas = root.get("components").get("schemas");
+    assertThat(schemas.has("CreateLinkRequest")).as("CreateLinkRequest schema").isTrue();
+    assertThat(schemas.has("LinkResponse")).as("LinkResponse schema").isTrue();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(
