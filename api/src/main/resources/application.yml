@@ -88,6 +88,14 @@ management:
       # content because the included indicators can shift across Boot minor
       # versions.
       enabled: true
+    mail:
+      # T-029: the spring-boot-starter-mail auto-registers a MailHealthIndicator that
+      # live-connects to SMTP and joins the /actuator/health aggregate. Email is an
+      # OUTBOX-DEFERRED side-channel — SMTP availability must NOT gate app liveness/
+      # readiness, or a transient SMTP outage would 503 /actuator/health and cause k8s
+      # to kill/depool an otherwise-healthy pod. The outbox decouples delivery, so this
+      # indicator is disabled by design.
+      enabled: false
 
 springdoc:
   api-docs:
