@@ -5,6 +5,7 @@ import { listMembers, projectKeys } from '@/api/projects';
 import { listLabels, listTickets, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
 import { ProjectViewToggle } from '@/features/project/ProjectViewToggle';
+import { ProjectSearchInput } from '@/features/search/ProjectSearchInput';
 import { useProjectOutlet } from './context';
 import { FilterBar } from './list/FilterBar';
 import { NewTicketDialog } from './list/NewTicketDialog';
@@ -46,7 +47,10 @@ export function ListPage() {
           <h2 className="text-lg font-semibold">Tickets</h2>
           <ProjectViewToggle />
         </div>
-        <Button onClick={() => setDialogOpen(true)}>New ticket</Button>
+        <div className="flex items-center gap-3">
+          <ProjectSearchInput projectId={project.id} projectKey={project.key} />
+          <Button onClick={() => setDialogOpen(true)}>New ticket</Button>
+        </div>
       </header>
 
       <FilterBar value={filters} onChange={setFilters} members={members} labels={labels} />

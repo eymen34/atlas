@@ -9,6 +9,7 @@ import {
   ProjectMembersService,
   ProjectResponse,
   ProjectsService,
+  SearchService,
   TicketsService,
 } from './generated';
 import { OpenAPI } from './generated/core/OpenAPI';
@@ -198,3 +199,10 @@ export const _listTicketLinksProbe: typeof LinksService.listTicketLinks =
   LinksService.listTicketLinks;
 export const _deleteTicketLinkProbe: typeof LinksService.deleteTicketLink =
   LinksService.deleteTicketLink;
+
+// T-028 compile-time probes: fail `tsc -b` if codegen drifts from the search API
+// (operationId / method-name stability — exactly two new operations).
+export const _searchProjectTicketsProbe: typeof SearchService.searchProjectTickets =
+  SearchService.searchProjectTickets;
+export const _searchAllTicketsProbe: typeof SearchService.searchAllTickets =
+  SearchService.searchAllTickets;

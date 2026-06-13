@@ -36,6 +36,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -311,6 +312,15 @@ public class GlobalExceptionHandler {
       HttpMessageNotReadableException ex, HttpServletRequest request) {
     log.info("unreadable request body path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, "Malformed request body", request);
+  }
+
+  @ExceptionHandler(MissingServletRequestParameterException.class)
+  public ResponseEntity<ErrorBody> handleMissingParam(
+      MissingServletRequestParameterException ex, HttpServletRequest request) {
+    // e.g. the required `q` on the search endpoints — 400 with the canonical body
+    // (not Spring's default error shape). Never echo a rejected value, only the name.
+    log.info("missing request parameter path={} param={}", request.getRequestURI(), ex.getParameterName());
+    return build(HttpStatus.BAD_REQUEST, "Missing required parameter: " + ex.getParameterName(), request);
   }
 
   private ResponseEntity<ErrorBody> build(

@@ -3,6 +3,7 @@ import { useLogout } from '@/auth/useAuthMutations';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
+import { GlobalSearchDialog } from '@/features/search/GlobalSearchDialog';
 import { useAuthStore } from '@/store/authStore';
 
 export function AppShell() {
@@ -16,6 +17,7 @@ export function AppShell() {
           <span className="text-lg font-semibold tracking-tight">Atlas</span>
         </div>
         <div className="flex items-center gap-3">
+          <GlobalSearchDialog />
           <span data-testid="topbar-user" className="text-sm text-muted-foreground">
             {user?.displayName}
           </span>
