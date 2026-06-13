@@ -8,17 +8,15 @@ the app to them via a ConfigMap (non-secret env) and a Secret (credentials).
 helm install tracker ./tracker --values my-values.yaml
 ```
 
-## Image policy (no published image yet)
+## Image policy
 
-This chart **references** an image; none is published upstream (GHCR push is deferred). Either:
-
-- build the production `/Dockerfile` (4-stage AppCDS) and push to **your own** registry —
-  `docker build -t <registry>/atlas:<tag> . && docker push <registry>/atlas:<tag>` — then set
-  `image.repository` / `image.tag`; or
-- load a locally-built `atlas:latest` into your cluster (e.g. `kind load` / `minikube image load`).
-
-`values.yaml` exposes `image.repository` (placeholder default `atlas`), `image.tag` (default
-`latest`), `image.pullPolicy`, and optional `imagePullSecrets`. There is no GHCR coupling.
+The production image is published to `ghcr.io/eymen34/atlas` via GitHub Actions on every push
+to `main` (`:latest` + `:<git-sha>`) and on version tag pushes (additionally `:<semver>`) — see
+`.github/workflows/publish.yml`. The default `values.yaml` already points at this registry, so
+no override is needed for a standard install. To use a locally built image instead, override
+`image.repository=atlas` and `image.tag=latest` in your values file (and load it into the
+cluster, e.g. `kind load` / `minikube image load`). `values.yaml` also exposes
+`image.pullPolicy` and optional `imagePullSecrets` (for a private GHCR package).
 
 ## Required values
 

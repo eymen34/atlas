@@ -8,12 +8,12 @@ nameOverride: ""
 fullnameOverride: ""
 
 # ── Image ──────────────────────────────────────────────────────────────────
-# No image is published upstream (GHCR push is deferred). Build the production
-# /Dockerfile (4-stage AppCDS) and push to your OWN registry, or use a locally
-# built `atlas:latest`. Override image.repository to your registry path.
+# Published to GHCR by .github/workflows/publish.yml on every main push
+# (:latest + :<git-sha>) and on v* tags (additionally :<semver>). Override
+# image.repository=atlas + image.tag=latest to use a locally built image instead.
 image:
-  repository: atlas # e.g. ghcr.io/<org>/atlas or <registry>/atlas — placeholder default
-  tag: "latest" # the image tag your registry holds (atlas:latest from /Dockerfile)
+  repository: ghcr.io/eymen34/atlas # published via publish.yml (T-035)
+  tag: "latest" # :latest tracks main; pin :<git-sha> or :<semver> for prod
   pullPolicy: IfNotPresent
 # Optional registry pull secrets (names of pre-created docker-registry Secrets).
 imagePullSecrets: []
