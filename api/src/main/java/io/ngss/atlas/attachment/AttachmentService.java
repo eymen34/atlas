@@ -1,0 +1,315 @@
+package io.ngss.atlas.attachment;
+
+import io.ngss.atlas.activity.ActivityEventWriter;
+import io.ngss.atlas.activity.payload.AttachmentAddedPayload;
+import io.ngss.atlas.activity.payload.AttachmentRemovedPayload;
+import io.ngss.atlas.attachment.dto.AttachmentResponse;
+import io.ngss.atlas.attachment.dto.DownloadUrlResponse;
+import io.ngss.atlas.attachment.dto.InitUploadRequest;
+import io.ngss.atlas.attachment.dto.InitUploadResponse;
+import io.ngss.atlas.domain.ActivityEventType;
+import io.ngss.atlas.domain.Attachment;
+import io.ngss.atlas.domain.AttachmentStatus;
+import io.ngss.atlas.domain.Ticket;
+import io.ngss.atlas.domain.TicketRepository;
+import io.ngss.atlas.project.ForbiddenProjectAccessException;
+import io.ngss.atlas.security.ProjectAccessGuard;
+import io.ngss.atlas.ticket.TicketNotFoundException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+
+/**
+ * Application service for the Attachment aggregate (T-025). The file bytes NEVER
+ * traverse the app on the HTTP path: init issues a presigned PUT (browser → S3
+ * directly), finalize HEADs the uploaded object server-side to verify it, and
+ * download issues a presigned GET. Authorization mirrors CommentService: load the
+ * ticket, guard {@code ticket.projectId} (non-member → 404); finalize is
+ * uploader-only; delete is uploader-OR-admin.
+ *
+ * <p>The two S3 beans are injected {@code @Lazy} so the Dockerfile stage-3 no-DB
+ * AppCDS boot never constructs them (appcds_boot_safety).
+ */
+@Service
+public class AttachmentService {
+
+  /**
+   * Accepted upload content types. A presigned PUT signs the Content-Type, so the
+   * stored object's type matches what was claimed here; finalize re-verifies via HEAD
+   * (defense for any direct-PUT path).
+   */
+  static final Set<String> ALLOWED_CONTENT_TYPES =
+      Set.of(
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "image/webp",
+          "application/pdf",
+          "text/plain",
+          "text/markdown",
+          "text/csv",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+
+  private static final Duration PUT_TTL = Duration.ofMinutes(10);
+  private static final Duration GET_TTL = Duration.ofMinutes(5);
+
+  private final AttachmentRepository attachmentRepository;
+  private final TicketRepository ticketRepository;
+  private final ProjectAccessGuard guard;
+  private final ActivityEventWriter activityWriter;
+  private final ObjectStorageProperties props;
+  private final ApplicationEventPublisher eventPublisher;
+  private final S3Client s3Client;
+  private final S3Presigner s3Presigner;
+
+  public AttachmentService(
+      AttachmentRepository attachmentRepository,
+      TicketRepository ticketRepository,
+      ProjectAccessGuard guard,
+      ActivityEventWriter activityWriter,
+      ObjectStorageProperties props,
+      ApplicationEventPublisher eventPublisher,
+      @Lazy S3Client s3Client,
+      @Lazy S3Presigner s3Presigner) {
+    this.attachmentRepository = attachmentRepository;
+    this.ticketRepository = ticketRepository;
+    this.guard = guard;
+    this.activityWriter = activityWriter;
+    this.props = props;
+    this.eventPublisher = eventPublisher;
+    this.s3Client = s3Client;
+    this.s3Presigner = s3Presigner;
+  }
+
+  @Transactional
+  public InitUploadResponse init(UUID ticketId, InitUploadRequest req, UUID callerId) {
+    Ticket ticket = loadTicket(ticketId);
+    guard.requireMember(ticket.getProjectId());
+
+    if (!ALLOWED_CONTENT_TYPES.contains(req.contentType())) {
+      throw new AttachmentValidationException("unsupported content type: " + req.contentType());
+    }
+    if (req.sizeBytes() > props.maxSizeBytes()) {
+      throw new AttachmentValidationException(
+          "file exceeds the maximum allowed size of " + props.maxSizeBytes() + " bytes");
+    }
+
+    UUID id = UUID.randomUUID();
+    String objectKey = "tickets/" + ticketId + "/" + id + "/" + sanitizeFilename(req.filename());
+    Instant now = Instant.now();
+    Attachment attachment =
+        new Attachment(
+            id,
+            ticketId,
+            callerId,
+            objectKey,
+            req.filename(),
+            req.contentType(),
+            req.sizeBytes(),
+            AttachmentStatus.PENDING,
+            now);
+    attachmentRepository.save(attachment);
+
+    String uploadUrl = presignPut(objectKey, req.contentType());
+    return new InitUploadResponse(id, uploadUrl, Map.of("Content-Type", req.contentType()));
+  }
+
+  @Transactional
+  public void finalizeUpload(UUID attachmentId, UUID callerId) {
+    Attachment attachment = loadLive(attachmentId);
+    Ticket ticket = loadTicket(attachment.getTicketId());
+    guard.requireMember(ticket.getProjectId());
+    // Uploader-only: a member who is not the uploader cannot finalize a foreign
+    // PENDING row → uniform 404 (no ownership leak).
+    if (!attachment.getUploadedBy().equals(callerId)) {
+      throw new AttachmentNotFoundException(attachmentId);
+    }
+    if (attachment.getStatus() == AttachmentStatus.READY) {
+      return; // idempotent no-op (already finalized)
+    }
+
+    HeadObjectResponse head;
+    try {
+      head =
+          s3Client.headObject(
+              HeadObjectRequest.builder()
+                  .bucket(props.bucket())
+                  .key(attachment.getObjectKey())
+                  .build());
+    } catch (S3Exception e) {
+      // Missing object (NoSuchKey) or any HEAD failure → FAILED, retry allowed.
+      attachment.markFailed();
+      attachmentRepository.save(attachment);
+      throw new AttachmentValidationException("uploaded object not found or unreadable");
+    }
+
+    boolean sizeOk =
+        head.contentLength() != null && head.contentLength() == attachment.getSizeBytes();
+    boolean typeOk = contentTypeMatches(head.contentType(), attachment.getContentType());
+    if (!sizeOk || !typeOk) {
+      attachment.markFailed();
+      attachmentRepository.save(attachment);
+      throw new AttachmentValidationException(
+          "uploaded object does not match the declared size or content type");
+    }
+
+    Instant now = Instant.now();
+    attachment.markReady(now);
+    attachmentRepository.save(attachment);
+    activityWriter.record(
+        attachment.getTicketId(),
+        callerId,
+        ActivityEventType.ATTACHMENT_ADDED,
+        new AttachmentAddedPayload(attachment.getId()),
+        now);
+    // T-025: kick the AFTER_COMMIT thumbnail worker (image/* only; loss-tolerant).
+    eventPublisher.publishEvent(
+        new AttachmentFinalizedEvent(
+            attachment.getId(),
+            attachment.getTicketId(),
+            attachment.getObjectKey(),
+            attachment.getContentType(),
+            now));
+  }
+
+  @Transactional(readOnly = true)
+  public List<AttachmentResponse> list(UUID ticketId, UUID callerId) {
+    Ticket ticket = loadTicket(ticketId);
+    guard.requireMember(ticket.getProjectId());
+    return attachmentRepository
+        .findByTicketIdAndStatusAndDeletedAtIsNullOrderByCreatedAtDesc(
+            ticketId, AttachmentStatus.READY)
+        .stream()
+        .map(AttachmentResponse::from)
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public DownloadUrlResponse downloadUrl(UUID attachmentId, boolean thumbnail, UUID callerId) {
+    Attachment attachment = loadLive(attachmentId);
+    Ticket ticket = loadTicket(attachment.getTicketId());
+    guard.requireMember(ticket.getProjectId());
+
+    String key;
+    if (thumbnail) {
+      key = attachment.getThumbnailObjectKey();
+      if (key == null) {
+        throw new AttachmentNotFoundException(attachmentId); // no thumbnail for this attachment
+      }
+    } else {
+      key = attachment.getObjectKey();
+    }
+    return new DownloadUrlResponse(presignGet(key));
+  }
+
+  @Transactional
+  public void delete(UUID attachmentId, UUID callerId) {
+    // Already-deleted → loadLive empty → 404 (idempotency boundary).
+    Attachment attachment = loadLive(attachmentId);
+    Ticket ticket = loadTicket(attachment.getTicketId());
+    guard.requireMember(ticket.getProjectId());
+    if (!attachment.getUploadedBy().equals(callerId) && !guard.isAdmin(ticket.getProjectId())) {
+      throw new ForbiddenProjectAccessException(ticket.getProjectId());
+    }
+
+    Instant now = Instant.now();
+    attachment.softDelete(now);
+    attachmentRepository.save(attachment);
+    // Soft-delete only; the S3 object removal is deferred to the T-029 outbox sweeper.
+    activityWriter.record(
+        attachment.getTicketId(),
+        callerId,
+        ActivityEventType.ATTACHMENT_REMOVED,
+        new AttachmentRemovedPayload(attachment.getId()),
+        now);
+  }
+
+  // ───────────────────────── helpers ─────────────────────────
+
+  private String presignPut(String objectKey, String contentType) {
+    PutObjectRequest put =
+        PutObjectRequest.builder()
+            .bucket(props.bucket())
+            .key(objectKey)
+            .contentType(contentType)
+            .build();
+    return s3Presigner
+        .presignPutObject(
+            PutObjectPresignRequest.builder()
+                .signatureDuration(PUT_TTL)
+                .putObjectRequest(put)
+                .build())
+        .url()
+        .toString();
+  }
+
+  private String presignGet(String objectKey) {
+    GetObjectRequest get =
+        GetObjectRequest.builder().bucket(props.bucket()).key(objectKey).build();
+    return s3Presigner
+        .presignGetObject(
+            GetObjectPresignRequest.builder()
+                .signatureDuration(GET_TTL)
+                .getObjectRequest(get)
+                .build())
+        .url()
+        .toString();
+  }
+
+  /** Compares only the media type (ignoring any {@code ;charset=…} parameter), case-insensitively. */
+  private static boolean contentTypeMatches(String actual, String declared) {
+    if (actual == null) {
+      return false;
+    }
+    return baseType(actual).equals(baseType(declared));
+  }
+
+  private static String baseType(String ct) {
+    int semi = ct.indexOf(';');
+    return (semi >= 0 ? ct.substring(0, semi) : ct).trim().toLowerCase(Locale.ROOT);
+  }
+
+  /** Keep only filename-safe chars so the object key is clean; never trust raw input. */
+  static String sanitizeFilename(String filename) {
+    if (filename == null) {
+      return "file";
+    }
+    String base = filename.replaceAll("[^A-Za-z0-9._-]", "_");
+    if (base.length() > 200) {
+      base = base.substring(base.length() - 200);
+    }
+    // Fall back when nothing meaningful survives (empty, or only separators like "///").
+    return base.chars().anyMatch(Character::isLetterOrDigit) ? base : "file";
+  }
+
+  private Ticket loadTicket(UUID ticketId) {
+    return ticketRepository
+        .findById(ticketId)
+        .orElseThrow(() -> new TicketNotFoundException("ticket not found: " + ticketId));
+  }
+
+  private Attachment loadLive(UUID attachmentId) {
+    return attachmentRepository
+        .findByIdAndDeletedAtIsNull(attachmentId)
+        .orElseThrow(() -> new AttachmentNotFoundException(attachmentId));
+  }
+}

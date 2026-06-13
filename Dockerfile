@@ -132,6 +132,12 @@ RUN APP_DATABASE_URL=jdbc:postgresql://cds-build-placeholder:5432/atlas \
     SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT=-1 \
     SPRING_AOT_ENABLED=true \
     JWT_SECRET=cds-build-placeholder-secret-min-32-characters-long \
+    OBJECT_STORAGE_ENDPOINT=http://cds-build-placeholder:9000 \
+    OBJECT_STORAGE_PUBLIC_ENDPOINT=http://cds-build-placeholder:9000 \
+    OBJECT_STORAGE_REGION=us-east-1 \
+    OBJECT_STORAGE_BUCKET=cds-placeholder \
+    OBJECT_STORAGE_ACCESS_KEY=cds \
+    OBJECT_STORAGE_SECRET_KEY=cds \
     timeout 120 java \
       -XX:ArchiveClassesAtExit=/build/app.jsa \
       -Dspring.context.exit=onRefresh \

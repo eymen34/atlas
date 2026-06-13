@@ -1,4 +1,5 @@
 import {
+  AttachmentsService,
   AuthService,
   CommentsService,
   ConfigService,
@@ -176,3 +177,15 @@ export const _markNotificationReadProbe: typeof NotificationsService.markNotific
   NotificationsService.markNotificationRead;
 export const _markAllNotificationsReadProbe: typeof NotificationsService.markAllNotificationsRead =
   NotificationsService.markAllNotificationsRead;
+
+// T-025 compile-time probes: fail `tsc -b` if codegen drifts from the attachment API.
+export const _initAttachmentUploadProbe: typeof AttachmentsService.initAttachmentUpload =
+  AttachmentsService.initAttachmentUpload;
+export const _finalizeAttachmentProbe: typeof AttachmentsService.finalizeAttachment =
+  AttachmentsService.finalizeAttachment;
+export const _listTicketAttachmentsProbe: typeof AttachmentsService.listTicketAttachments =
+  AttachmentsService.listTicketAttachments;
+export const _getAttachmentDownloadUrlProbe: typeof AttachmentsService.getAttachmentDownloadUrl =
+  AttachmentsService.getAttachmentDownloadUrl;
+export const _deleteAttachmentProbe: typeof AttachmentsService.deleteAttachment =
+  AttachmentsService.deleteAttachment;

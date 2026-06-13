@@ -1,5 +1,7 @@
 package io.ngss.atlas.error;
 
+import io.ngss.atlas.attachment.AttachmentNotFoundException;
+import io.ngss.atlas.attachment.AttachmentValidationException;
 import io.ngss.atlas.auth.ForbiddenTokenAccessException;
 import io.ngss.atlas.auth.InvalidCredentialsException;
 import io.ngss.atlas.comment.CommentNotFoundException;
@@ -198,6 +200,22 @@ public class GlobalExceptionHandler {
     // Foreign id OR genuinely missing — uniform 404 (not 403) avoids the IDOR leak.
     log.info("notification not found path={}", request.getRequestURI());
     return build(HttpStatus.NOT_FOUND, "Notification not found", request);
+  }
+
+  @ExceptionHandler(AttachmentNotFoundException.class)
+  public ResponseEntity<ErrorBody> handleAttachmentNotFound(
+      AttachmentNotFoundException ex, HttpServletRequest request) {
+    // Missing/soft-deleted/foreign attachment, or a thumbnail request with no
+    // thumbnail — uniform 404 (no existence/ownership leak; IDOR-safe).
+    log.info("attachment not found path={}", request.getRequestURI());
+    return build(HttpStatus.NOT_FOUND, "Attachment not found", request);
+  }
+
+  @ExceptionHandler(AttachmentValidationException.class)
+  public ResponseEntity<ErrorBody> handleAttachmentValidation(
+      AttachmentValidationException ex, HttpServletRequest request) {
+    log.info("attachment validation failure path={}", request.getRequestURI());
+    return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
   }
 
   @ExceptionHandler(LabelNotFoundException.class)
