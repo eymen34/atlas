@@ -50,6 +50,15 @@ public class User {
   @Column(name = "mention_handle", nullable = false, length = 64)
   private String mentionHandle;
 
+  /**
+   * Per-recipient email opt-out (T-029, V15). DEFAULT true at the DB; the Java field
+   * defaults to {@code true} so a newly-registered {@link User} (constructed without
+   * touching this flag) persists as opt-in. The notification fan-out gates email
+   * enqueue on this; the in-app notification row is written regardless.
+   */
+  @Column(name = "email_notifications_enabled", nullable = false)
+  private boolean emailNotificationsEnabled = true;
+
   /** JPA-only no-args constructor. Do not use directly. */
   protected User() {}
 
@@ -83,6 +92,14 @@ public class User {
 
   public String getMentionHandle() {
     return mentionHandle;
+  }
+
+  public boolean isEmailNotificationsEnabled() {
+    return emailNotificationsEnabled;
+  }
+
+  public void setEmailNotificationsEnabled(boolean emailNotificationsEnabled) {
+    this.emailNotificationsEnabled = emailNotificationsEnabled;
   }
 
   /**

@@ -2710,6 +2710,35 @@
         "tags" : [ "health-controller" ]
       }
     },
+    "/internal/tasks/drain-outbox" : {
+      "post" : {
+        "operationId" : "drainOutbox",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DrainResult"
+                }
+              }
+            },
+            "description" : "Drain summary (processed/succeeded/failed/retried)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DrainResult"
+                }
+              }
+            },
+            "description" : "Missing or invalid internal secret"
+          }
+        },
+        "summary" : "Drain a batch of due outbox rows (internal; X-Internal-Secret required)",
+        "tags" : [ "internal-tasks-controller" ]
+      }
+    },
     "/ready" : {
       "get" : {
         "operationId" : "ready",
@@ -2951,6 +2980,27 @@
         "properties" : {
           "url" : {
             "type" : "string"
+          }
+        }
+      },
+      "DrainResult" : {
+        "type" : "object",
+        "properties" : {
+          "failed" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "processed" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "retried" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "succeeded" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },

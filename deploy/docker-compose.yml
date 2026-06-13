@@ -8,8 +8,9 @@
 #   db          PostgreSQL 17 (pgdata persisted in postgres_data volume)
 #   objectstore MinIO S3-compatible store (data in minio_data volume)
 #   mc-init     one-shot bucket bootstrap, exits 0 when ready
+#   mailhog     MailHog SMTP sink (T-029) — 1025 SMTP, 8025 web UI
 #   app         atlas:dev built from /Dockerfile.dev, depends on the
-#               three above being healthy / completed
+#               above being healthy / completed
 #
 # No top-level `version:` key — modern Compose Specification (the legacy
 # key triggers deprecation warnings and is ignored anyway).
@@ -68,6 +69,14 @@ services:
         mc mb --ignore-existing local/$$OBJECT_STORAGE_BUCKET &&
         mc anonymous set download local/$$OBJECT_STORAGE_BUCKET
 
+  # T-029: SMTP sink for outbox-driven email. MailHog accepts everything on 1025 and
+  # exposes a web inbox at http://localhost:8025 — no real mail leaves the machine.
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI (http://localhost:8025)
+
   app:
     build:
       context: ..
@@ -80,9 +89,15 @@ services:
         condition: service_healthy
       mc-init:
         condition: service_completed_successfully
+      mailhog:
+        condition: service_started
     ports:
       - "8080:8080"
     env_file: ["../.env"]
+    # .env points SMTP_HOST at localhost (host-side dev); inside the compose network the
+    # broker is the `mailhog` service, so override just that key here.
+    environment:
+      SMTP_HOST: mailhog
     healthcheck:
       # /ready performs a DB ping; this gates `docker compose up --wait`
       # on the app actually serving traffic, not just having a PID.

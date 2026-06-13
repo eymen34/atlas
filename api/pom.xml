@@ -79,6 +79,15 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
+
+    <!-- T-029: SMTP email via JavaMailSender (plaintext SimpleMailMessage, no Thymeleaf).
+         The JavaMailSenderImpl bean is created lazily and opens NO connection at boot, so
+         the stage-3 no-DB AppCDS warm-up (and the specgen dump) start without an SMTP
+         server. spring.mail.test-connection stays false (the default). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-oauth2-jose</artifactId>

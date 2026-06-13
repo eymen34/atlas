@@ -32,8 +32,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <p>Permit list (unauthenticated): /health, /ready, /actuator/prometheus,
  * springdoc/Swagger UI, and the three pre-login auth endpoints
  * (login, register, refresh). Everything else under /api/** requires a
- * valid Bearer JWT. /internal/** is denyAll today and will be gated by a
- * shared-secret header in T-029.
+ * valid Bearer JWT. /internal/** is denyAll EXCEPT POST /internal/tasks/drain-outbox,
+ * which requires ROLE_INTERNAL granted by {@link InternalSecretFilter} on a valid
+ * X-Internal-Secret (T-029).
  *
  * <p>The {@code bearerAuth} OpenAPI security scheme is declared at the
  * class level so {@code @SecurityRequirement(name="bearerAuth")} on auth
@@ -69,6 +70,7 @@ public class SecurityConfig {
   SecurityFilterChain filterChain(
       HttpSecurity http,
       JwtAuthenticationFilter jwtAuthenticationFilter,
+      InternalSecretFilter internalSecretFilter,
       JsonAuthenticationEntryPoint authenticationEntryPoint,
       JsonAccessDeniedHandler accessDeniedHandler)
       throws Exception {
@@ -116,8 +118,14 @@ public class SecurityConfig {
                     // is opened (no /api/config/** glob); it must precede the
                     // /api/** authenticated catch-all below.
                     .requestMatchers(HttpMethod.GET, "/api/config/public").permitAll()
-                    // Internal endpoints — denyAll today; T-029 wires a
-                    // shared-secret header filter ahead of this rule.
+                    // T-029: the outbox drain endpoint is reachable only with a valid
+                    // X-Internal-Secret (InternalSecretFilter grants ROLE_INTERNAL). This
+                    // rule MUST precede the /internal/** denyAll catch-all below.
+                    .requestMatchers(HttpMethod.POST, "/internal/tasks/drain-outbox")
+                        .hasAuthority("ROLE_INTERNAL")
+                    // Every other internal endpoint stays denyAll. The InternalSecretFilter
+                    // sets a non-anonymous (empty-authority) token for /internal/ requests so
+                    // a denial here returns 403, not the 401 entry point.
                     .requestMatchers("/internal/**").denyAll()
                     // Every other /api/** path requires a valid Bearer token.
                     .requestMatchers("/api/**").authenticated()
@@ -131,7 +139,10 @@ public class SecurityConfig {
             ex ->
                 ex.authenticationEntryPoint(authenticationEntryPoint)
                     .accessDeniedHandler(accessDeniedHandler))
-        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+        // Runs before the JWT filter so /internal/ requests are gated by the shared secret,
+        // independent of any Bearer token (internal_endpoint_surface).
+        .addFilterBefore(internalSecretFilter, JwtAuthenticationFilter.class);
     return http.build();
   }
 

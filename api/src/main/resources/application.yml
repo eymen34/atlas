@@ -15,6 +15,17 @@ server:
 spring:
   application:
     name: atlas-api
+  # T-029: SMTP for outbox-driven email. Defaults target the local MailHog container
+  # (deploy/docker-compose, 1025 SMTP / 8025 UI). The JavaMailSenderImpl is built lazily
+  # and connects only on send(), so a blank/unreachable host never blocks boot. STARTTLS
+  # off by default (MailHog is plaintext); enable via SMTP_STARTTLS=true for real relays.
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
   jpa:
     open-in-view: false
     # PAIR-RULE (hibernate_cold_start): the two keys below
@@ -97,6 +108,11 @@ springdoc:
   override-with-generic-response: false
 
 app:
+  # T-029: email envelope + deep-link base. SMTP_FROM is the From: header; APP_BASE_URL
+  # is the origin used to build ticket links in notification emails.
+  mail:
+    from: ${SMTP_FROM:noreply@atlas.local}
+  base-url: ${APP_BASE_URL:http://localhost:8080}
   # T-023: feature flags. FEATURE_WATCHERS_ENABLED is NOT APP_-prefixed (same as
   # JWT_SECRET); default true. Surfaced unauthenticated via GET /api/config/public.
   feature:

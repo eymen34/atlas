@@ -22,16 +22,20 @@ public abstract class BaseIT {
    * MUST be emptied before the table it references:
    *
    * <pre>
-   * ticket_links → attachments → notifications → ticket_mentions → ticket_watchers
+   * outbox → ticket_links → attachments → notifications → ticket_mentions → ticket_watchers
    *   → comment_mentions → comments → activity_events → ticket_labels → labels → tickets
    *   → project_ticket_counters → project_members → projects → refresh_tokens
    *   → password_credentials → users
    * </pre>
    *
+   * <p>{@code outbox} (T-029) has no FK dependents and references no other table, so it
+   * deletes first as a free-standing infra table.
+   *
    * <p>Tables with no rows for a given test (e.g. labels in an auth-only IT) delete
    * as harmless no-ops, so this is safe to call from every IT.
    */
   public static void cleanDatabase(JdbcTemplate jdbc) {
+    jdbc.update("DELETE FROM outbox");
     jdbc.update("DELETE FROM ticket_links");
     jdbc.update("DELETE FROM attachments");
     jdbc.update("DELETE FROM notifications");
