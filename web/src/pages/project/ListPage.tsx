@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { listMembers, projectKeys } from '@/api/projects';
 import { listLabels, listTickets, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
+import { ProjectViewToggle } from '@/features/project/ProjectViewToggle';
 import { useProjectOutlet } from './context';
 import { FilterBar } from './list/FilterBar';
 import { NewTicketDialog } from './list/NewTicketDialog';
@@ -41,7 +42,10 @@ export function ListPage() {
   return (
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-semibold">Tickets</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">Tickets</h2>
+          <ProjectViewToggle />
+        </div>
         <Button onClick={() => setDialogOpen(true)}>New ticket</Button>
       </header>
 

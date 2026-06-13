@@ -158,6 +158,21 @@ export async function createTicket(projectId: string, req: CreateTicketRequest):
   return toTicket(await TicketsService.createTicket(projectId, req));
 }
 
+/**
+ * Board variant of {@link listTickets} (T-027): status is the COLUMN axis on the
+ * Kanban board, NOT a filter, so it is defensively stripped here (E2). The board
+ * groups all of a project's tickets client-side from a single large page.
+ */
+export async function boardListTickets(
+  projectId: string,
+  filters: TicketFilters
+): Promise<TicketPage> {
+  return listTickets(projectId, { ...filters, status: undefined });
+}
+
+/** T-027 compile-time probe: TicketStatus stays the board's four-column axis. */
+export const _boardStatusProbe: TicketStatus = 'TODO';
+
 export async function listLabels(projectId: string): Promise<Label[]> {
   return (await LabelsService.listProjectLabels(projectId)).map(toLabel);
 }
