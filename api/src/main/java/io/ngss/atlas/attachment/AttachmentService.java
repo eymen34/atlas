@@ -13,6 +13,9 @@ import io.ngss.atlas.domain.Attachment;
 import io.ngss.atlas.domain.AttachmentStatus;
 import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketRepository;
+import io.ngss.atlas.outbox.AttachmentDeletePayload;
+import io.ngss.atlas.outbox.OutboxKind;
+import io.ngss.atlas.outbox.OutboxRepository;
 import io.ngss.atlas.project.ForbiddenProjectAccessException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import io.ngss.atlas.ticket.TicketNotFoundException;
@@ -36,6 +39,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Application service for the Attachment aggregate (T-025). The file bytes NEVER
@@ -79,6 +83,8 @@ public class AttachmentService {
   private final ActivityEventWriter activityWriter;
   private final ObjectStorageProperties props;
   private final ApplicationEventPublisher eventPublisher;
+  private final OutboxRepository outboxRepository;
+  private final ObjectMapper objectMapper;
   private final S3Client s3Client;
   private final S3Presigner s3Presigner;
 
@@ -89,6 +95,8 @@ public class AttachmentService {
       ActivityEventWriter activityWriter,
       ObjectStorageProperties props,
       ApplicationEventPublisher eventPublisher,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
       @Lazy S3Client s3Client,
       @Lazy S3Presigner s3Presigner) {
     this.attachmentRepository = attachmentRepository;
@@ -97,6 +105,8 @@ public class AttachmentService {
     this.activityWriter = activityWriter;
     this.props = props;
     this.eventPublisher = eventPublisher;
+    this.outboxRepository = outboxRepository;
+    this.objectMapper = objectMapper;
     this.s3Client = s3Client;
     this.s3Presigner = s3Presigner;
   }
@@ -241,7 +251,14 @@ public class AttachmentService {
     Instant now = Instant.now();
     attachment.softDelete(now);
     attachmentRepository.save(attachment);
-    // Soft-delete only; the S3 object removal is deferred to the T-029 outbox sweeper.
+    // T-029: enqueue the S3 object removal in the SAME transaction as the soft-delete, so the
+    // outbox row and the deleted_at commit atomically. The drain handler removes the object key
+    // (and the thumbnail key, if any) — replacing the old "deferred sweeper" TODO.
+    outboxRepository.enqueue(
+        OutboxKind.ATTACHMENT_DELETE_OBJECT,
+        objectMapper.valueToTree(
+            new AttachmentDeletePayload(
+                attachment.getObjectKey(), attachment.getThumbnailObjectKey())));
     activityWriter.record(
         attachment.getTicketId(),
         callerId,

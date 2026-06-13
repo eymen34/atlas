@@ -1,0 +1,41 @@
+# Kubernetes CronJob that drains the outbox every minute (T-029).
+#
+#   kubectl create secret generic atlas-outbox \
+#     --from-literal=shared-secret="$OUTBOX_DRAIN_SHARED_SECRET"
+#   kubectl apply -f deploy/cron/k8s-cronjob.yaml
+#
+# Adjust APP_URL to the in-cluster Service DNS of the atlas API.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-outbox-drain
+spec:
+  schedule: "* * * * *" # every minute
+  concurrencyPolicy: Forbid # SKIP LOCKED makes overlap safe, but no need to pile up
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # the NEXT minute retries; the outbox itself owns per-row backoff
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: drain
+              image: curlimages/curl:8.10.1
+              env:
+                - name: APP_URL
+                  value: "http://atlas-api.default.svc.cluster.local:8080"
+                - name: OUTBOX_DRAIN_SHARED_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-outbox
+                      key: shared-secret
+              command:
+                - /bin/sh
+                - -c
+                - >
+                  curl -fsS -X POST
+                  -H "X-Internal-Secret: ${OUTBOX_DRAIN_SHARED_SECRET}"
+                  "${APP_URL}/internal/tasks/drain-outbox"

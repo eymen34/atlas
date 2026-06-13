@@ -14,6 +14,7 @@ import io.ngss.atlas.attachment.dto.InitUploadRequest;
 import io.ngss.atlas.domain.Attachment;
 import io.ngss.atlas.domain.Ticket;
 import io.ngss.atlas.domain.TicketRepository;
+import io.ngss.atlas.outbox.OutboxRepository;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Unit tests for {@link AttachmentService}'s init-time validation (no container needed)
@@ -41,6 +43,8 @@ class AttachmentServiceTest {
   @Mock ProjectAccessGuard guard;
   @Mock ActivityEventWriter activityWriter;
   @Mock ApplicationEventPublisher eventPublisher;
+  @Mock OutboxRepository outboxRepository;
+  @Mock ObjectMapper objectMapper;
   @Mock S3Client s3Client;
   @Mock S3Presigner s3Presigner;
 
@@ -56,6 +60,8 @@ class AttachmentServiceTest {
         activityWriter,
         props,
         eventPublisher,
+        outboxRepository,
+        objectMapper,
         s3Client,
         s3Presigner);
   }
