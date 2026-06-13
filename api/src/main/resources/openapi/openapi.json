@@ -9,6 +9,152 @@
     "description" : "Generated server url"
   } ],
   "paths" : {
+    "/api/attachments/{id}" : {
+      "delete" : {
+        "description" : "Stamps deleted_at and writes an ATTACHMENT_REMOVED activity row; the S3 object removal is deferred to the T-029 outbox sweeper. A second delete → 404.",
+        "operationId" : "deleteAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Attachment soft-deleted"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          },
+          "403" : {
+            "description" : "Caller is neither the uploader nor an ADMIN"
+          },
+          "404" : {
+            "description" : "Attachment not found or already deleted"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Soft-delete an attachment (uploader or project ADMIN)",
+        "tags" : [ "attachments" ]
+      }
+    },
+    "/api/attachments/{id}/download-url" : {
+      "get" : {
+        "description" : "Returns a 5-minute presigned GET URL signed against the PUBLIC endpoint. thumbnail=true returns the thumbnail's URL (404 if the attachment has none). Never 302-redirects — the JSON API stays JSON.",
+        "operationId" : "getAttachmentDownloadUrl",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "in" : "query",
+          "name" : "thumbnail",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DownloadUrlResponse"
+                }
+              }
+            },
+            "description" : "Presigned URL"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DownloadUrlResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DownloadUrlResponse"
+                }
+              }
+            },
+            "description" : "Attachment not found, caller is not a member, or no thumbnail"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Get a short-lived presigned GET URL (any member)",
+        "tags" : [ "attachments" ]
+      }
+    },
+    "/api/attachments/{id}/finalize" : {
+      "post" : {
+        "description" : "HEADs the uploaded object and verifies its actual size and content-type match the declared values. Returns 200 with {status} in either case: success → READY + ATTACHMENT_ADDED activity; mismatch or missing object → FAILED + reason (retry allowed). A mismatch is a state-machine outcome, NOT a 4xx — finalize must commit the FAILED status (an exception would roll it back; jpa_rollback_only_trap). Idempotent: already-READY → 200 READY. Only the uploader may finalize; a foreign PENDING row → 404.",
+        "operationId" : "finalizeAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
+            "description" : "Finalize result (READY or FAILED)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
+            "description" : "Attachment not found or not the uploader"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Finalize an upload — server verifies the object (uploader only)",
+        "tags" : [ "attachments" ]
+      }
+    },
     "/api/auth/login" : {
       "post" : {
         "operationId" : "login",
@@ -1677,6 +1823,139 @@
         "tags" : [ "activity" ]
       }
     },
+    "/api/tickets/{id}/attachments" : {
+      "get" : {
+        "description" : "Bare array of READY, non-deleted attachments; each carries a hasThumbnail flag.",
+        "operationId" : "listTicketAttachments",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/AttachmentResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Attachments listed"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/AttachmentResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/AttachmentResponse"
+                  }
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "List a ticket's READY attachments, newest first (any member)",
+        "tags" : [ "attachments" ]
+      }
+    },
+    "/api/tickets/{id}/attachments/init" : {
+      "post" : {
+        "description" : "Validates the content-type allowlist and the CLAIMED size against ATTACHMENT_MAX_SIZE_BYTES, creates a PENDING row, and returns a 10-minute presigned PUT URL (Content-Type signed). The browser PUTs the bytes directly to S3; the real size gate is the finalize HEAD (a presigned PUT cannot enforce a max size).",
+        "operationId" : "initAttachmentUpload",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/InitUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InitUploadResponse"
+                }
+              }
+            },
+            "description" : "Upload initialized"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InitUploadResponse"
+                }
+              }
+            },
+            "description" : "Disallowed content type or oversize"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InitUploadResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/InitUploadResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Begin an attachment upload — returns a presigned PUT URL (any member)",
+        "tags" : [ "attachments" ]
+      }
+    },
     "/api/tickets/{id}/comments" : {
       "get" : {
         "description" : "Paged (size clamped 1..100). Soft-deleted comments are returned with body=null and deleted=true (server-redacted), keeping their place.",
@@ -2168,6 +2447,40 @@
           }
         }
       },
+      "AttachmentResponse" : {
+        "type" : "object",
+        "properties" : {
+          "contentType" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "filename" : {
+            "type" : "string"
+          },
+          "hasThumbnail" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sizeBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "ticketId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "uploadedBy" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
       "AuthResponse" : {
         "type" : "object",
         "properties" : {
@@ -2291,11 +2604,64 @@
           }
         }
       },
+      "DownloadUrlResponse" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : "string"
+          }
+        }
+      },
       "FeaturesDto" : {
         "type" : "object",
         "properties" : {
           "watchers" : {
             "type" : "boolean"
+          }
+        }
+      },
+      "FinalizeResponse" : {
+        "type" : "object",
+        "properties" : {
+          "reason" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "InitUploadRequest" : {
+        "required" : [ "contentType", "filename" ],
+        "type" : "object",
+        "properties" : {
+          "contentType" : {
+            "type" : "string"
+          },
+          "filename" : {
+            "type" : "string"
+          },
+          "sizeBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "InitUploadResponse" : {
+        "type" : "object",
+        "properties" : {
+          "attachmentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "headers" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string"
+            }
+          },
+          "uploadUrl" : {
+            "type" : "string"
           }
         }
       },

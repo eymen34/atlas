@@ -91,18 +91,20 @@ jobs:
             -t atlas:ci-test \
             .
 
-      - name: Assert image size <= 450 MiB
+      - name: Assert image size <= 512 MiB
         run: |
           set -euo pipefail
-          # 450 MiB MVP budget. Image is ~426 MB (jre-noble ~250 + fat jar
-          # with bundled frontend + AppCDS archive). jlink-stripped minimal
-          # JRE to cut this to ~150 MB is a T-013 follow-up (see
-          # architecture_decisions / post-implementation notes).
-          MAX=471859200
+          # 512 MiB budget. Raised from 450 in T-025: AWS SDK v2 (S3 presigning)
+          # is a permanent dependency that pushed the fat jar past the old budget.
+          # Image is jre-noble (~250 MB) + fat jar (frontend + AWS SDK) + AppCDS
+          # archive. SDK transitive trim (exclude apache-client / netty-nio-client;
+          # url-connection-client is already the sync choice) + jlink-stripped
+          # minimal JRE are a separate optimization ticket (with the GHCR backlog).
+          MAX=536870912
           SIZE="$(docker image inspect atlas:ci-test --format '{{.Size}}')"
           echo "image size: ${SIZE} bytes (max ${MAX})"
           if [ "${SIZE}" -gt "${MAX}" ]; then
-            echo "::error::atlas:ci-test image exceeds 450 MiB budget (${SIZE} > ${MAX})"
+            echo "::error::atlas:ci-test image exceeds 512 MiB budget (${SIZE} > ${MAX})"
             exit 1
           fi
 

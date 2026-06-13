@@ -300,6 +300,56 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t025AttachmentEndpointsPresentWithStableOperationIds() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode paths = root.get("paths");
+    assertThat(
+            paths
+                .path("/api/tickets/{id}/attachments/init")
+                .path("post")
+                .path("operationId")
+                .asString())
+        .isEqualTo("initAttachmentUpload");
+    assertThat(
+            paths.path("/api/attachments/{id}/finalize").path("post").path("operationId").asString())
+        .isEqualTo("finalizeAttachment");
+    assertThat(
+            paths.path("/api/tickets/{id}/attachments").path("get").path("operationId").asString())
+        .isEqualTo("listTicketAttachments");
+    assertThat(
+            paths
+                .path("/api/attachments/{id}/download-url")
+                .path("get")
+                .path("operationId")
+                .asString())
+        .isEqualTo("getAttachmentDownloadUrl");
+    assertThat(
+            paths.path("/api/attachments/{id}").path("delete").path("operationId").asString())
+        .isEqualTo("deleteAttachment");
+
+    // 403 documented on delete (uploader-or-admin); 400 on init (allowlist/oversize).
+    assertThat(
+            paths.path("/api/attachments/{id}").path("delete").path("responses").has("403"))
+        .isTrue();
+    assertThat(
+            paths
+                .path("/api/tickets/{id}/attachments/init")
+                .path("post")
+                .path("responses")
+                .has("400"))
+        .isTrue();
+
+    JsonNode schemas = root.get("components").get("schemas");
+    assertThat(schemas.has("InitUploadRequest")).as("InitUploadRequest schema").isTrue();
+    assertThat(schemas.has("InitUploadResponse")).as("InitUploadResponse schema").isTrue();
+    assertThat(schemas.has("AttachmentResponse")).as("AttachmentResponse schema").isTrue();
+    assertThat(schemas.has("FinalizeResponse")).as("FinalizeResponse schema").isTrue();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(

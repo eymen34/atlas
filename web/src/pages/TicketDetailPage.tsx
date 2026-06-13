@@ -5,6 +5,7 @@ import { apiErrorStatus } from '@/api/errors';
 import { listMembers, projectKeys } from '@/api/projects';
 import { listLabels, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
+import { AttachmentsSection } from '@/features/attachments/AttachmentsSection';
 import { CommentsSection } from '@/features/tickets/CommentsSection';
 import { useTicketActivity, useTicketDetail } from '@/features/tickets/hooks';
 import { TicketActivityTimeline } from '@/features/tickets/TicketActivityTimeline';
@@ -98,7 +99,11 @@ export default function TicketDetailPage() {
             currentUserId={currentUserId}
             isProjectAdmin={isProjectAdmin}
           />
-          {/* T-025: attachment list slot */}
+          <AttachmentsSection
+            ticketId={ticket.id}
+            currentUserId={currentUserId}
+            isProjectAdmin={isProjectAdmin}
+          />
           {/* T-026: links slot */}
           <TicketActivityTimeline events={activityQuery.data ?? []} members={members} />
         </div>

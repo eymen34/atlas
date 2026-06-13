@@ -111,6 +111,23 @@ class FlywayV9MigrationIT {
   }
 
   @Test
+  void v12AttachmentsMigrationIsApplied() {
+    // Existence check (not latest==N) per migration_it_no_version_pinning. V12 is the
+    // attachments table (T-025); the Phase-2 migrate-to-latest above applies it.
+    Integer v12Applied =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM flyway_schema_history WHERE version = '12' AND success = true",
+            Integer.class);
+    assertThat(v12Applied).isEqualTo(1);
+
+    Integer attachmentsTable =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'attachments'",
+            Integer.class);
+    assertThat(attachmentsTable).isEqualTo(1);
+  }
+
+  @Test
   void backfillIsLowercaseDeterministicAndCollisionSuffixed() {
     assertThat(handle(ALICE_1)).isEqualTo("alice");
     assertThat(handle(ALICE_2)).isEqualTo("alice-2"); // uppercase email → lowercased + suffixed

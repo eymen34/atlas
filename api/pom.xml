@@ -38,7 +38,22 @@
     <!-- logstash-logback-encoder 8.x supports SLF4J 2.x + Logback 1.5.x
          (the versions Spring Boot 4.0.6 manages). -->
     <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+    <!-- T-025: AWS SDK v2 (S3 presigning). BOM-managed so s3 + url-connection-client
+         stay version-aligned. v2 does NOT use Jackson databind → no Jackson 3 conflict. -->
+    <awssdk.version>2.28.0</awssdk.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${awssdk.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -105,6 +120,20 @@
       <version>${logstash-logback-encoder.version}</version>
     </dependency>
 
+    <!-- T-025: S3 attachments. S3Presigner ships INSIDE the s3 artifact (there is
+         no separate s3-presigner module). url-connection-client = the lightweight
+         sync HTTP client (UrlConnectionHttpClient) — avoids pulling Apache/Netty.
+         Both BOM-managed. Beans are @Lazy so stage-3 AppCDS no-DB boot never
+         constructs them (appcds_boot_safety). -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+    </dependency>
+
     <!-- springdoc-openapi targets Spring Boot 3.x. Pinned 2.6.0 per
          architecture_decisions:api_style. T-009 verifies it boots on
          Boot 4.0.6 / Spring Framework 7.0.7 before any further work. -->
@@ -134,6 +163,13 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- T-025: MinIO Testcontainer for the attachment ITs (S3-compatible). -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>minio</artifactId>
       <version>${testcontainers.version}</version>
       <scope>test</scope>
     </dependency>

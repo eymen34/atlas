@@ -102,6 +102,11 @@ app:
   feature:
     watchers:
       enabled: ${FEATURE_WATCHERS_ENABLED:true}
+    # T-025: inline JPEG thumbnail generation on attachment finalize. INTERNAL flag
+    # (not surfaced via /api/config/public). Off → finalize still succeeds with no
+    # thumbnail. Swapped for outbox-driven generation in T-029.
+    inline-thumbnails:
+      enabled: ${FEATURE_INLINE_THUMBNAILS_ENABLED:true}
   cors:
     # Comma-separated list, trimmed by SecurityConfig. Default covers the
     # Vite dev server (:5173) and the Vite preview server (:4173) used by
