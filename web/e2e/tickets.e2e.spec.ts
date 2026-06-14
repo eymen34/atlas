@@ -28,8 +28,12 @@ test('create project → add ticket → see it in the list → filter by status'
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${key}$`), { timeout: 10_000 });
 
-  // Open the list view via the project sidebar; it starts empty.
-  await page.getByRole('link', { name: 'List' }).click();
+  // Open the list view via the project sidebar; it starts empty. Scope to the sidebar nav —
+  // T-027's ProjectViewToggle added a second "List" link, so an unscoped getByRole is ambiguous.
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/projects/${key}/list$`));
   await expect(page.getByText('No tickets match the current filters.')).toBeVisible();
 

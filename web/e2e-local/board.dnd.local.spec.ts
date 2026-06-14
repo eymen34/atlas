@@ -26,14 +26,25 @@ test('drag a card TODO → IN_PROGRESS writes a STATUS_CHANGED activity', async 
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${key}$`), { timeout: 10_000 });
 
-  // Create a ticket from the list, then open the board.
-  await page.getByRole('link', { name: 'List' }).click();
+  // Create a ticket from the list, then open the board. Scope nav links to the sidebar —
+  // ProjectViewToggle (T-027) added second "Board"/"List" links → unscoped getByRole is ambiguous.
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await page.getByRole('button', { name: 'New ticket' }).click();
   await page.getByLabel('Title').fill('Drag me');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByText(`${key}-1 created`)).toBeVisible({ timeout: 10_000 });
 
-  await page.getByRole('link', { name: 'Board' }).click();
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'Board', exact: true })
+    .click();
+  // Force a fresh board fetch: the ticket was created in the List view, which does not invalidate
+  // the board's query key, and the board's 15s staleTime serves the stale (empty) cache the index
+  // route pre-fetched. A reload re-runs the board query against the committed ticket.
+  await page.reload();
   await expect(page.getByTestId('board-column-TODO')).toBeVisible();
   const card = page.locator('[data-testid^="board-ticket-card-"]').filter({ hasText: `${key}-1` });
   await expect(card).toBeVisible();
