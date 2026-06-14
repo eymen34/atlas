@@ -102,8 +102,15 @@ springdoc:
     # Pin the OpenAPI document path so the springdoc upgrade path is
     # auditable. T-010 generates the frontend TS client against this URL.
     path: /v3/api-docs
+    # T-037: gate /v3/api-docs behind a runtime flag. Default TRUE so the build-time spec
+    # dump + drift-check (and dev/CI) keep docs ON; prod sets API_DOCS_ENABLED=false →
+    # springdoc deregisters the route → 404 (not auth-gated). The :true fallback is REQUIRED —
+    # a blank placeholder would resolve to false, disable docs, and break the spec dump.
+    enabled: ${API_DOCS_ENABLED:true}
   swagger-ui:
     path: /swagger-ui.html
+    # T-037: same toggle for Swagger UI (/swagger-ui.html → 404 when API_DOCS_ENABLED=false).
+    enabled: ${API_DOCS_ENABLED:true}
   # T-011: springdoc 2.6.0 is built against Spring 6. On Spring Framework 7
   # (Boot 4) its generic-response builder calls the removed
   # ControllerAdviceBean(Object) constructor as soon as ANY @ControllerAdvice

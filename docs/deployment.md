@@ -92,6 +92,8 @@ BYO-secret (`existingSecret`) vs `--set` paths. The chart installs the Deploymen
 manifest over the chart's CronJob, [`deploy/cron/k8s-cronjob.yaml`](../deploy/cron/k8s-cronjob.yaml)
 is the same drain as a plain `kubectl apply`.
 
+- `API_DOCS_ENABLED=false` — Swagger UI and `/v3/api-docs` are disabled in production (the Helm chart ships this default; springdoc returns 404). Override to `true` for debugging.
+
 ---
 
 ## Mode 3 — SaaS (Google Cloud Run + Cloud Scheduler + Neon + R2/GCS)

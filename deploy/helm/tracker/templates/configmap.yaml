@@ -11,3 +11,6 @@ data:
   {{- range $key, $value := .Values.config }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
+  # T-037: Swagger UI / /v3/api-docs toggle. A YAML boolean in values.yaml → "true"/"false"
+  # string here; Spring relaxed-binding maps it back to springdoc.{swagger-ui,api-docs}.enabled.
+  API_DOCS_ENABLED: {{ .Values.apiDocsEnabled | quote }}

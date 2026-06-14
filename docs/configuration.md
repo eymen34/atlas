@@ -72,9 +72,19 @@ handed to the browser (must be client-resolvable). In prod they often point to t
 | `FEATURE_INLINE_THUMBNAILS_ENABLED` | bool | `true` | no | no | all |
 
 The external cron sends `OUTBOX_DRAIN_SHARED_SECRET` as the **`X-Internal-Secret`** request header
-to `POST /internal/tasks/drain-outbox`. (The `.env.example` comment that calls it `X-Drain-Secret`
-is stale — the wire header is `X-Internal-Secret`, matching `InternalSecretFilter` and the
-`deploy/cron/` manifests.)
+to `POST /internal/tasks/drain-outbox` (matching `InternalSecretFilter` and the `deploy/cron/`
+manifests).
+
+## Application — API docs
+
+| Name | Type | Default | Required | Secret | Modes |
+| --- | --- | --- | --- | --- | --- |
+| `API_DOCS_ENABLED` | bool | `true` | no | no | all (dev/CI `true`; prod chart `false`) |
+
+When `false`, springdoc deregisters the routes so `/swagger-ui.html` and `/v3/api-docs` return
+**404** (existence-hiding, NOT an auth-gated 401). `.env.example` defaults `true`; the Helm chart
+(`apiDocsEnabled`) defaults `false` to hide docs in production. The build-time spec dump relies on
+the `true` default, so `api/src/main/resources/openapi/openapi.json` is unaffected.
 
 ## Local-stack-only (Docker Compose containers, not app config)
 
