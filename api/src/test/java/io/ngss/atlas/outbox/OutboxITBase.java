@@ -178,6 +178,15 @@ abstract class OutboxITBase extends BaseIT {
     return spec.post("/internal/tasks/drain-outbox");
   }
 
+  /** POST the maintenance endpoint; sends {@code X-Internal-Secret} only when {@code secret != null}. */
+  Response runMaintenance(String secret) {
+    var spec = given();
+    if (secret != null) {
+      spec = spec.header("X-Internal-Secret", secret);
+    }
+    return spec.post("/internal/tasks/run-maintenance");
+  }
+
   // ───────────────────────── outbox seeding / assertion helpers ─────────────────────────
 
   UUID enqueueEmail(String toEmail, String subject, String body) {

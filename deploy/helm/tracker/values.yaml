@@ -149,6 +149,15 @@ drainCron:
   # The CronJob reads OUTBOX_DRAIN_SHARED_SECRET from the same Secret as the app
   # (chart-created or existingSecret) — see _helpers tracker.secretName.
 
+# ── Maintenance sweep CronJob (POST /internal/tasks/run-maintenance, T-053) ──────
+# Reclaims stuck PROCESSING outbox rows (→ PENDING or FAILED) and expires abandoned
+# PENDING attachment uploads. A safety net, NOT a hot path — runs less frequently than
+# the per-minute drain. Same shared secret as the drain CronJob.
+maintenanceCron:
+  enabled: true
+  schedule: "*/10 * * * *" # every 10 minutes
+  image: curlimages/curl:8.10.1
+
 # Extra pod scheduling knobs (optional).
 nodeSelector: {}
 tolerations: []

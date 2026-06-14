@@ -123,6 +123,11 @@ public class SecurityConfig {
                     // rule MUST precede the /internal/** denyAll catch-all below.
                     .requestMatchers(HttpMethod.POST, "/internal/tasks/drain-outbox")
                         .hasAuthority("ROLE_INTERNAL")
+                    // T-053: the maintenance sweep endpoint (reclaim + PENDING-upload expiry) is
+                    // gated identically — ROLE_INTERNAL from a valid X-Internal-Secret. Like the
+                    // drain rule, it MUST precede the /internal/** denyAll catch-all below.
+                    .requestMatchers(HttpMethod.POST, "/internal/tasks/run-maintenance")
+                        .hasAuthority("ROLE_INTERNAL")
                     // Every other internal endpoint stays denyAll. The InternalSecretFilter
                     // sets a non-anonymous (empty-authority) token for /internal/ requests so
                     // a denial here returns 403, not the 401 entry point.

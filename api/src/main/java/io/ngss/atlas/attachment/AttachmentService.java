@@ -267,6 +267,34 @@ public class AttachmentService {
         now);
   }
 
+  /**
+   * System-context soft-delete for the T-053 maintenance expiry sweep — NO actor, NO project
+   * guard (the caller is the internal cron). Reuses the SAME single
+   * {@code ATTACHMENT_DELETE_OBJECT} enqueue as {@link #delete}; deliberately records NO
+   * {@code ATTACHMENT_REMOVED} activity, because an expired never-finalized PENDING upload was
+   * never visible (it never produced an {@code ATTACHMENT_ADDED}).
+   *
+   * <p>{@code @Transactional} (REQUIRED): invoked per-row from {@code MaintenanceService}'s
+   * {@code NEVER} context, so each call opens its OWN transaction — the {@code deleted_at} write
+   * and the outbox enqueue commit together or roll back together. Idempotent: an
+   * already-soft-deleted (or absent) row is a silent no-op, so a concurrent sweep never
+   * double-enqueues.
+   */
+  @Transactional
+  public void softDeleteSystem(UUID id) {
+    Attachment attachment = attachmentRepository.findByIdAndDeletedAtIsNull(id).orElse(null);
+    if (attachment == null) {
+      return; // already soft-deleted or gone — no-op, no second enqueue
+    }
+    attachment.softDelete(Instant.now());
+    attachmentRepository.save(attachment);
+    outboxRepository.enqueue(
+        OutboxKind.ATTACHMENT_DELETE_OBJECT,
+        objectMapper.valueToTree(
+            new AttachmentDeletePayload(
+                attachment.getObjectKey(), attachment.getThumbnailObjectKey())));
+  }
+
   // ───────────────────────── helpers ─────────────────────────
 
   private String presignPut(String objectKey, String contentType) {

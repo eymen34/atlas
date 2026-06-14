@@ -2791,6 +2791,35 @@
         "tags" : [ "internal-tasks-controller" ]
       }
     },
+    "/internal/tasks/run-maintenance" : {
+      "post" : {
+        "operationId" : "runMaintenance",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MaintenanceResult"
+                }
+              }
+            },
+            "description" : "Maintenance summary (reclaimedToPending/reclaimedToFailed/expiredUploads)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MaintenanceResult"
+                }
+              }
+            },
+            "description" : "Missing or invalid internal secret"
+          }
+        },
+        "summary" : "Reclaim stuck PROCESSING outbox rows and expire abandoned PENDING uploads",
+        "tags" : [ "internal-tasks-controller" ]
+      }
+    },
     "/ready" : {
       "get" : {
         "operationId" : "ready",
@@ -3272,6 +3301,23 @@
         "properties" : {
           "refreshToken" : {
             "type" : "string"
+          }
+        }
+      },
+      "MaintenanceResult" : {
+        "type" : "object",
+        "properties" : {
+          "expiredUploads" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "reclaimedToFailed" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "reclaimedToPending" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
       },

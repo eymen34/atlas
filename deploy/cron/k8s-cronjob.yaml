@@ -39,3 +39,41 @@ spec:
                   curl -fsS -X POST
                   -H "X-Internal-Secret: ${OUTBOX_DRAIN_SHARED_SECRET}"
                   "${APP_URL}/internal/tasks/drain-outbox"
+---
+# Kubernetes CronJob that runs the outbox maintenance sweep (T-053): reclaims stuck
+# PROCESSING rows and expires abandoned PENDING attachment uploads. Less frequent than
+# the drain (every 10 min) — reclaim is a safety net, not a hot path. Same shared secret.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-run-maintenance
+spec:
+  schedule: "*/10 * * * *" # every 10 minutes — less frequent than the per-minute drain
+  concurrencyPolicy: Forbid # SKIP LOCKED makes overlap safe, but no need to pile up
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # the NEXT tick retries; the sweep is idempotent
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: maintenance
+              image: curlimages/curl:8.10.1
+              env:
+                - name: APP_URL
+                  value: "http://atlas-api.default.svc.cluster.local:8080"
+                - name: OUTBOX_DRAIN_SHARED_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-outbox
+                      key: shared-secret
+              command:
+                - /bin/sh
+                - -c
+                - >
+                  curl -fsS -X POST
+                  -H "X-Internal-Secret: ${OUTBOX_DRAIN_SHARED_SECRET}"
+                  "${APP_URL}/internal/tasks/run-maintenance"
