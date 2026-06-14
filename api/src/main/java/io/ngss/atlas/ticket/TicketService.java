@@ -347,6 +347,48 @@ public class TicketService {
     return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
   }
 
+  // ───────────────────────── unassign (clear assignee) ─────────────────────────
+
+  /**
+   * Clears a ticket's assignee (T-041). A dedicated verb because PATCH cannot express
+   * "clear": {@link UpdateTicketRequest} is a JSON record, so both {@code assigneeId:null}
+   * and an absent field deserialize to Java {@code null} — unassign-via-PATCH is
+   * indistinguishable from leave-unchanged and silently no-ops.
+   *
+   * <p>Mirrors the PATCH assign path's side effects, inverted for a null new value: records
+   * an {@code ASSIGNEE_CHANGED} activity row ({@code from=old, to=null}) synchronously in
+   * this transaction (reusing one {@link Instant#now()}), and — exactly as the assign path
+   * does when the new assignee is null — adds NO watcher and publishes NO TicketAssignedEvent
+   * (there is no new assignee to notify). Idempotent: clearing an already-unassigned ticket
+   * is a no-op (no field change, no activity row, {@code updatedAt} untouched), mirroring the
+   * transition same-status no-op.
+   */
+  @Transactional
+  public TicketResponse unassign(UUID ticketId, UUID callerId) {
+    Ticket ticket = loadLiveTicket(ticketId);
+    guard.requireMember(ticket.getProjectId());
+
+    UUID oldAssignee = ticket.getAssigneeId();
+    if (oldAssignee == null) {
+      // Already unassigned → no-op: no activity row, updatedAt not advanced.
+      return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
+    }
+
+    Instant now = Instant.now();
+    ticket.updateFields(ticket.getTitle(), ticket.getDescription(), null, ticket.getPriority(), now);
+    ticketRepository.save(ticket);
+    // Same activity kind as the assign path, with the new value null (mirror inverted).
+    activityWriter.record(
+        ticket.getId(),
+        callerId,
+        ActivityEventType.ASSIGNEE_CHANGED,
+        new AssigneeChangedPayload(oldAssignee, null),
+        now);
+    // No watcher (no new assignee) and no TicketAssignedEvent — exactly the assign path's
+    // behavior when the new assignee is null.
+    return TicketResponse.from(ticket, projectKey(ticket.getProjectId()), List.of());
+  }
+
   // ───────────────────────── transition ─────────────────────────
 
   @Transactional

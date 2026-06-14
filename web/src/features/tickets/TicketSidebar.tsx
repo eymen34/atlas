@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { useSetTicketLabels, useUpdateTicket } from './hooks';
+import { useSetTicketLabels, useUnassignTicket, useUpdateTicket } from './hooks';
 
 const memberName = (m: Member) => m.displayName || m.email || 'Unknown user';
 
@@ -55,12 +55,21 @@ function AssigneePicker({
   members: Member[];
 }) {
   const update = useUpdateTicket(idOrKey, ticket);
+  const unassign = useUnassignTicket(idOrKey, ticket);
   const [open, setOpen] = useState(false);
   const current = members.find((m) => m.userId === ticket.assigneeId);
+  const pending = update.isPending || unassign.isPending;
 
   function choose(userId: string | null) {
     setOpen(false);
-    if (userId !== (ticket.assigneeId ?? null)) {
+    if (userId === (ticket.assigneeId ?? null)) {
+      return; // no change
+    }
+    // SET goes through PATCH; CLEAR is the dedicated DELETE verb (T-041) — PATCH
+    // assigneeId:null would silently no-op on the backend.
+    if (userId === null) {
+      unassign.mutate();
+    } else {
       update.mutate({ assigneeId: userId });
     }
   }
@@ -72,7 +81,7 @@ function AssigneePicker({
           variant="outline"
           size="sm"
           data-testid="assignee-picker"
-          disabled={update.isPending}
+          disabled={pending}
           className="w-full justify-start font-normal"
         >
           {current ? memberName(current) : <span className="text-muted-foreground">Unassigned</span>}

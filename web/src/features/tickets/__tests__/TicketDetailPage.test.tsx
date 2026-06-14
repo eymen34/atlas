@@ -11,6 +11,7 @@ import {
   type Ticket,
   ticketKeys,
   transitionTicket,
+  unassignTicket,
   updateTicket,
 } from '@/api/tickets';
 import { ProtectedRoute } from '@/auth/ProtectedRoute';
@@ -26,6 +27,7 @@ vi.mock('@/api/tickets', async (importOriginal) => {
     ...actual,
     getTicket: vi.fn(),
     updateTicket: vi.fn(),
+    unassignTicket: vi.fn(),
     transitionTicket: vi.fn(),
     setTicketLabels: vi.fn(),
     listTicketActivity: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock('@/features/tickets/TicketDescription', () => ({
 
 const getTicketMock = vi.mocked(getTicket);
 const updateTicketMock = vi.mocked(updateTicket);
+const unassignTicketMock = vi.mocked(unassignTicket);
 const transitionTicketMock = vi.mocked(transitionTicket);
 const listActivityMock = vi.mocked(listTicketActivity);
 const listMembersMock = vi.mocked(listMembers);
@@ -74,6 +77,7 @@ function renderPage(queryClient = createTestQueryClient()) {
 beforeEach(() => {
   getTicketMock.mockReset().mockResolvedValue(TICKET_PROJ_1);
   updateTicketMock.mockReset().mockResolvedValue(TICKET_PROJ_1_UPDATED);
+  unassignTicketMock.mockReset().mockResolvedValue({ ...TICKET_PROJ_1, assigneeId: undefined });
   transitionTicketMock.mockReset().mockResolvedValue({ ...TICKET_PROJ_1, status: 'IN_PROGRESS' });
   listActivityMock.mockReset().mockResolvedValue([]);
   listMembersMock.mockReset().mockResolvedValue(MEMBERS_TWO);
@@ -196,6 +200,22 @@ describe('TicketDetailPage', () => {
     await waitFor(() =>
       expect(within(screen.getByTestId('assignee-picker')).getByText('Alice')).toBeInTheDocument()
     );
+  });
+
+  it('T-041: choosing "Unassigned" calls unassignTicket (DELETE), never updateTicket(null)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const picker = await screen.findByTestId('assignee-picker');
+    await waitFor(() => expect(within(picker).getByText('Alice')).toBeInTheDocument());
+
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: /Unassigned/ }));
+
+    // The dedicated DELETE verb is used with the ticket UUID; PATCH is never touched
+    // (a PATCH assigneeId:null would silently no-op on the backend — D3).
+    await waitFor(() => expect(unassignTicketMock).toHaveBeenCalledWith('t-uuid-1'));
+    expect(updateTicketMock).not.toHaveBeenCalled();
   });
 
   it('AC-5.3: a 404 from getTicket renders a friendly not-found state (no crash)', async () => {

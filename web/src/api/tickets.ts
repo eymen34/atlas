@@ -220,15 +220,16 @@ export function toActivityEvent(raw: ActivityEventResponse): ActivityEvent {
 }
 
 /**
- * Patch for {@link updateTicket}. `assigneeId: null` expresses an explicit
- * unassign — the generated UpdateTicketRequest types it as `string` only, so the
- * call casts. (Backend null-vs-absent semantics tracked as a backlog item.)
+ * Patch for {@link updateTicket}. PATCH only SETS fields: assigneeId is a UUID to
+ * assign, never null. A null/absent assigneeId leaves the assignee unchanged (the
+ * backend record cannot distinguish them), so CLEARING is done via {@link unassignTicket}
+ * (DELETE /tickets/{id}/assignee), NOT a null here [T-041].
  */
 export interface TicketPatch {
   title?: string;
   description?: string;
   priority?: TicketPriority;
-  assigneeId?: string | null;
+  assigneeId?: string;
 }
 
 /** Fetch a single ticket by UUID id or display key (e.g. ENG-42). */
@@ -259,6 +260,20 @@ export async function transitionTicket(ticketId: string, toStatus: TicketStatus)
 export async function setTicketLabels(ticketId: string, labelIds: string[]): Promise<Ticket> {
   return toTicket(await TicketsService.setTicketLabels(ticketId, { labelIds }));
 }
+
+/**
+ * Clear a ticket's assignee (DELETE /api/tickets/{id}/assignee, T-041). PATCH only
+ * SETS an assignee — a null/absent assigneeId leaves it unchanged (the backend record
+ * cannot tell the two apart) — so clearing is this dedicated verb. Idempotent. Takes
+ * the ticket UUID (the endpoint binds @PathVariable UUID, not the display key).
+ */
+export async function unassignTicket(ticketId: string): Promise<Ticket> {
+  return toTicket(await TicketsService.unassignTicket(ticketId));
+}
+
+/** T-041 compile-time probe: the generated client exposes unassignTicket (codegen drift guard). */
+export const _unassignTicketProbe: typeof TicketsService.unassignTicket =
+  TicketsService.unassignTicket;
 
 /** List a ticket's activity (newest first). Takes the ticket UUID; pinned page/size. */
 export async function listTicketActivity(

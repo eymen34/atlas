@@ -325,6 +325,94 @@ class TicketControllerIT {
         .body("{\"title\":\"Hijack\"}").patch("/api/tickets/" + id).then().statusCode(404);
   }
 
+  // ───────────────────────── T-041: unassign (DELETE /{id}/assignee) ─────────────────────────
+
+  @Test
+  void unassign_onAssignedTicket_clearsAssignee_andRecordsAssigneeChangedToNull() {
+    String id =
+        createTicket(tokenA, engId, "{\"title\":\"Assigned\",\"assigneeId\":\"" + userA + "\"}")
+            .then()
+            .statusCode(201)
+            .body("assigneeId", equalTo(userA.toString()))
+            .extract()
+            .jsonPath()
+            .getString("id");
+
+    // Clears the assignee; mirrors the PATCH/transition shape (200 + the updated ticket).
+    unassign(tokenA, id)
+        .then()
+        .statusCode(200)
+        .body("id", equalTo(id))
+        .body("key", equalTo("ENG-1"))
+        .body("assigneeId", nullValue());
+
+    assertThat(jdbc.queryForObject("SELECT assignee_id FROM tickets WHERE id=?::uuid", String.class, id))
+        .isNull();
+
+    // Activity: exactly one ASSIGNEE_CHANGED row, new value null (assign path mirrored, inverted).
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM activity_events WHERE ticket_id=?::uuid AND event_type='ASSIGNEE_CHANGED'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT (payload::jsonb)->>'to' FROM activity_events WHERE ticket_id=?::uuid AND event_type='ASSIGNEE_CHANGED'",
+                String.class,
+                id))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT (payload::jsonb)->>'from' FROM activity_events WHERE ticket_id=?::uuid AND event_type='ASSIGNEE_CHANGED'",
+                String.class,
+                id))
+        .isEqualTo(userA.toString());
+  }
+
+  @Test
+  void unassign_onAlreadyUnassignedTicket_isIdempotent_andWritesNoActivity() {
+    String id = createTicketId(tokenA, engId, "Plain"); // created with no assignee
+
+    unassign(tokenA, id).then().statusCode(200).body("assigneeId", nullValue());
+    // A second call is still a success (idempotent no-op).
+    unassign(tokenA, id).then().statusCode(200).body("assigneeId", nullValue());
+
+    // No real change ever happened → no ASSIGNEE_CHANGED row (mirrors the transition no-op).
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM activity_events WHERE ticket_id=?::uuid AND event_type='ASSIGNEE_CHANGED'",
+                Integer.class,
+                id))
+        .isZero();
+  }
+
+  @Test
+  void unassign_byNonMember_returns404_andLeavesAssigneeUntouched() {
+    String id =
+        createTicket(tokenA, engId, "{\"title\":\"Owned\",\"assigneeId\":\"" + userA + "\"}")
+            .then()
+            .statusCode(201)
+            .extract()
+            .jsonPath()
+            .getString("id");
+
+    unassign(tokenC, id).then().statusCode(404); // stranger → existence-leak prevention
+
+    given()
+        .header("Authorization", "Bearer " + tokenA)
+        .get("/api/tickets/" + id)
+        .then()
+        .statusCode(200)
+        .body("assigneeId", equalTo(userA.toString())); // unchanged
+  }
+
+  @Test
+  void unassign_unauthenticated_returns401() {
+    String id = createTicketId(tokenA, engId, "X");
+    given().delete("/api/tickets/" + id + "/assignee").then().statusCode(401);
+  }
+
   // ───────────────────────── AC-7: transition ─────────────────────────
 
   @Test
@@ -482,5 +570,12 @@ class TicketControllerIT {
         .body("{\"toStatus\":\"" + toStatus + "\"}")
         .when()
         .post("/api/tickets/" + ticketId + "/transition");
+  }
+
+  private Response unassign(String token, String ticketId) {
+    return given()
+        .header("Authorization", "Bearer " + token)
+        .when()
+        .delete("/api/tickets/" + ticketId + "/assignee");
   }
 }

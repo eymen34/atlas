@@ -2010,6 +2010,58 @@
         "tags" : [ "activity" ]
       }
     },
+    "/api/tickets/{id}/assignee" : {
+      "delete" : {
+        "description" : "Removes the current assignee (sets it to null). Idempotent — clearing an already-unassigned ticket is a 200 no-op. PATCH /api/tickets/{id} SETS an assignee; a null or absent assigneeId in PATCH leaves it unchanged, so clearing is this dedicated verb.",
+        "operationId" : "unassignTicket",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Assignee cleared (or no-op if already unassigned)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TicketResponse"
+                }
+              }
+            },
+            "description" : "Ticket not found or caller is not a member"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Clear a ticket's assignee (any member)",
+        "tags" : [ "tickets" ]
+      }
+    },
     "/api/tickets/{id}/attachments" : {
       "get" : {
         "description" : "Bare array of READY, non-deleted attachments; each carries a hasThumbnail flag.",
