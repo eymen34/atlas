@@ -29,8 +29,12 @@ test('change status on the detail page → a STATUS_CHANGED activity row appears
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${key}$`), { timeout: 10_000 });
 
-  // Create a ticket from the list view, then open it.
-  await page.getByRole('link', { name: 'List' }).click();
+  // Create a ticket from the list view, then open it. Scope the "List" link to the sidebar nav
+  // (T-027's ProjectViewToggle added a second "List" link → unscoped getByRole is ambiguous).
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await page.getByRole('button', { name: 'New ticket' }).click();
   await page.getByLabel('Title').fill('Detail flow ticket');
   await page.getByRole('button', { name: 'Create' }).click();

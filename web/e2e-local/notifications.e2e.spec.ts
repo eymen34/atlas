@@ -46,14 +46,24 @@ test('alice assigns a ticket to bob → bob sees an ASSIGNED notification and it
   await alice.getByRole('button', { name: 'Create project' }).click();
   await expect(alice).toHaveURL(new RegExp(`/projects/${key}$`), { timeout: 10_000 });
 
-  // Add bob as a member.
-  await alice.getByRole('link', { name: 'Members' }).click();
+  // Add bob as a member. The add-member form lives on the project Settings page (the Members
+  // page is a read-only roster) — navigate via the sidebar nav, then fill its Email field.
+  await alice
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'Settings', exact: true })
+    .click();
   await alice.getByLabel('Email').fill(bobEmail);
   await alice.getByRole('button', { name: 'Add member' }).click();
-  await expect(alice.getByText(bobEmail)).toBeVisible({ timeout: 10_000 });
+  // exact:true — the non-readOnly member list also renders an sr-only "Role for <email>" label,
+  // so a substring getByText(bobEmail) matches 2 elements. The visible row <p> equals the email.
+  await expect(alice.getByText(bobEmail, { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  // Create a ticket and open it.
-  await alice.getByRole('link', { name: 'List' }).click();
+  // Create a ticket and open it. Scope "List" to the sidebar nav (ProjectViewToggle, T-027,
+  // added a second "List" link → unscoped getByRole is ambiguous).
+  await alice
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await alice.getByRole('button', { name: 'New ticket' }).click();
   await alice.getByLabel('Title').fill('Please take this');
   await alice.getByRole('button', { name: 'Create' }).click();

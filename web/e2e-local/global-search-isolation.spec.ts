@@ -34,7 +34,11 @@ test('global search shows only tickets in projects the caller is a member of', a
   await bob.getByLabel('Key').fill(bobKey);
   await bob.getByRole('button', { name: 'Create project' }).click();
   await expect(bob).toHaveURL(new RegExp(`/projects/${bobKey}$`), { timeout: 10_000 });
-  await bob.getByRole('link', { name: 'List' }).click();
+  // Scope "List" to the sidebar nav — ProjectViewToggle (T-027) added a second "List" link.
+  await bob
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await bob.getByRole('button', { name: 'New ticket' }).click();
   await bob.getByLabel('Title').fill('Authentication service for Bob');
   await bob.getByRole('button', { name: 'Create' }).click();
@@ -55,7 +59,10 @@ test('global search shows only tickets in projects the caller is a member of', a
   await alice.getByLabel('Key').fill(aliceKey);
   await alice.getByRole('button', { name: 'Create project' }).click();
   await expect(alice).toHaveURL(new RegExp(`/projects/${aliceKey}$`), { timeout: 10_000 });
-  await alice.getByRole('link', { name: 'List' }).click();
+  await alice
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   await alice.getByRole('button', { name: 'New ticket' }).click();
   await alice.getByLabel('Title').fill('Authentication service for Alice');
   await alice.getByRole('button', { name: 'Create' }).click();

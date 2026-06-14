@@ -25,8 +25,12 @@ test('link two tickets (BLOCKS) → the link appears in the panel', async ({ pag
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${key}$`), { timeout: 10_000 });
 
-  // Two tickets: KEY-1 and KEY-2.
-  await page.getByRole('link', { name: 'List' }).click();
+  // Two tickets: KEY-1 and KEY-2. Scope "List" to the sidebar nav (ProjectViewToggle, T-027,
+  // added a second "List" link → unscoped getByRole is ambiguous).
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: 'List', exact: true })
+    .click();
   for (const title of ['First ticket', 'Second ticket']) {
     await page.getByRole('button', { name: 'New ticket' }).click();
     await page.getByLabel('Title').fill(title);
