@@ -11,9 +11,6 @@ export const STATUS_LABEL: Record<TicketStatus, string> = {
   DONE: 'Done',
 };
 
-/** Virtualize a column only past this many cards (D4 — YAGNI threshold). */
-export const VIRTUALIZE_THRESHOLD = 100;
-
 /** One large page so the whole project groups into the four columns in one call (D1). */
 export const BOARD_PAGE_SIZE = 500;
 
