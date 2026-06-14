@@ -10,6 +10,7 @@ import {
   type TicketPatch,
   type TicketStatus,
   transitionTicket,
+  unassignTicket,
   updateTicket,
 } from '@/api/tickets';
 
@@ -57,10 +58,10 @@ function invalidateTicketViews(
 }
 
 /**
- * Optimistic field PATCH (title/description/priority/assignee). Snapshots the
+ * Optimistic field PATCH (title/description/priority/assignee-SET). Snapshots the
  * cached ticket, writes the patch, rolls back + toasts on error, and invalidates
- * detail/activity/lists on settle. assigneeId:null collapses to undefined in the
- * cached shape (an unassigned ticket).
+ * detail/activity/lists on settle. PATCH only SETS the assignee (a UUID); CLEARING
+ * is {@link useUnassignTicket} (T-041), so no null is handled here.
  */
 export function useUpdateTicket(idOrKey: string, ticket: Ticket | undefined) {
   const qc = useQueryClient();
@@ -70,12 +71,7 @@ export function useUpdateTicket(idOrKey: string, ticket: Ticket | undefined) {
       await qc.cancelQueries({ queryKey: ticketKeys.detail(idOrKey) });
       const prev = qc.getQueryData<Ticket>(ticketKeys.detail(idOrKey));
       if (prev) {
-        const { assigneeId, ...rest } = patch;
-        const next: Ticket = { ...prev, ...rest };
-        if (assigneeId !== undefined) {
-          next.assigneeId = assigneeId ?? undefined;
-        }
-        qc.setQueryData<Ticket>(ticketKeys.detail(idOrKey), next);
+        qc.setQueryData<Ticket>(ticketKeys.detail(idOrKey), { ...prev, ...patch });
       }
       return { prev };
     },
@@ -84,6 +80,34 @@ export function useUpdateTicket(idOrKey: string, ticket: Ticket | undefined) {
         qc.setQueryData(ticketKeys.detail(idOrKey), context.prev);
       }
       toast.error('Could not save change');
+    },
+    onSettled: () => invalidateTicketViews(qc, idOrKey, ticket),
+  });
+}
+
+/**
+ * Optimistic unassign (DELETE /tickets/{id}/assignee, T-041). Mirrors
+ * {@link useUpdateTicket}'s shape — cancelQueries → snapshot → optimistically clear
+ * the cached assignee → restore + toast on error → invalidate on settle — but clears
+ * rather than sets, and needs no payload (the verb itself means "clear").
+ */
+export function useUnassignTicket(idOrKey: string, ticket: Ticket | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unassignTicket(ticket!.id),
+    onMutate: async (): Promise<OptimisticContext> => {
+      await qc.cancelQueries({ queryKey: ticketKeys.detail(idOrKey) });
+      const prev = qc.getQueryData<Ticket>(ticketKeys.detail(idOrKey));
+      if (prev) {
+        qc.setQueryData<Ticket>(ticketKeys.detail(idOrKey), { ...prev, assigneeId: undefined });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) {
+        qc.setQueryData(ticketKeys.detail(idOrKey), context.prev);
+      }
+      toast.error('Could not unassign');
     },
     onSettled: () => invalidateTicketViews(qc, idOrKey, ticket),
   });

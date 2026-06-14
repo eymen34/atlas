@@ -131,6 +131,27 @@ public class TicketController {
     return ResponseEntity.ok(ticketService.setTicketLabels(id, req.labelIds(), CurrentUser.id()));
   }
 
+  @DeleteMapping("/{id}/assignee")
+  @Operation(
+      operationId = "unassignTicket",
+      summary = "Clear a ticket's assignee (any member)",
+      description =
+          "Removes the current assignee (sets it to null). Idempotent — clearing an "
+              + "already-unassigned ticket is a 200 no-op. PATCH /api/tickets/{id} SETS an "
+              + "assignee; a null or absent assigneeId in PATCH leaves it unchanged, so clearing "
+              + "is this dedicated verb.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Assignee cleared (or no-op if already unassigned)",
+        content = @Content(schema = @Schema(implementation = TicketResponse.class))),
+    @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
+    @ApiResponse(responseCode = "404", description = "Ticket not found or caller is not a member")
+  })
+  public ResponseEntity<TicketResponse> unassign(@PathVariable UUID id) {
+    return ResponseEntity.ok(ticketService.unassign(id, CurrentUser.id()));
+  }
+
   @DeleteMapping("/{id}")
   @Operation(operationId = "deleteTicket", summary = "Soft-delete a ticket (ADMIN only)")
   @ApiResponses({
