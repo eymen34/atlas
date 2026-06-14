@@ -82,6 +82,12 @@ probes:
     timeoutSeconds: 3
     failureThreshold: 6 # ~ generous headroom while migrations/cold-start finish
 
+# ── API docs (Swagger UI / /v3/api-docs) ────────────────────────────────────
+# T-037: chart default FALSE — production hides the docs (springdoc returns 404, not 401).
+# Set to true to expose Swagger UI + /v3/api-docs (e.g. self-hosted debugging):
+# `--set apiDocsEnabled=true`. Rendered into the ConfigMap as the string "false"/"true".
+apiDocsEnabled: false
+
 # ── Non-secret application env (rendered into a ConfigMap) ───────────────────
 # Names mirror .env.example EXACTLY. Secrets live under `secrets`/`existingSecret`,
 # NEVER here. APP_DATABASE_STARTUP_CHECK_ENABLED is image-build-only and is
