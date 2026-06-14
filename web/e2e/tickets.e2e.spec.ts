@@ -1,4 +1,4 @@
-// RUN LOCALLY ONLY — CI wiring deferred (see CI-wiring ticket)
+// Runs in the nightly e2e-full workflow (.github/workflows/e2e-full.yml, auth-real-backend project) and locally via npm run e2e:full
 //
 // Mirrors auth.spec.ts: runs ONLY under --project=auth-real-backend
 // (`npm run e2e:auth`) against a real compose stack at E2E_BASE_URL. NOT wired to

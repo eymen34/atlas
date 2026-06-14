@@ -1,4 +1,4 @@
-// RUN LOCALLY ONLY — CI wiring deferred (see CI-wiring ticket)
+// Runs in the nightly e2e-full workflow (.github/workflows/e2e-full.yml) and locally via npm run e2e:full
 //
 // Real-backend full-flow E2E (nightly_e2e_deferral): runs ONLY under
 // --project=e2e-local (`npm run e2e:local`) against a compose stack at E2E_BASE_URL
