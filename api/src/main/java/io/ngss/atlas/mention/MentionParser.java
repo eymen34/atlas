@@ -1,12 +1,15 @@
 package io.ngss.atlas.mention;
 
 import io.ngss.atlas.domain.UserRepository;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,8 +41,18 @@ public class MentionParser {
 
   private final UserRepository userRepository;
 
-  public MentionParser(UserRepository userRepository) {
+  /**
+   * Advisory soft cap on the number of distinct @handle candidates resolved per body
+   * (T-043, D1). Default 50 via {@code MENTION_MAX_CANDIDATES}. The {@code :50} default
+   * keeps this AppCDS-safe (always a valid int); a non-positive value resolves nobody.
+   */
+  private final int mentionMaxCandidates;
+
+  public MentionParser(
+      UserRepository userRepository,
+      @Value("${MENTION_MAX_CANDIDATES:50}") int mentionMaxCandidates) {
     this.userRepository = userRepository;
+    this.mentionMaxCandidates = mentionMaxCandidates;
   }
 
   /**
@@ -63,7 +76,24 @@ public class MentionParser {
     if (candidates.isEmpty()) {
       return Set.of();
     }
+
+    // T-043 (D1/D2): advisory soft cap on the number of DISTINCT candidate handles.
+    // Dedup already happened above (LinkedHashSet, first-appearance order); keep only the
+    // first N and silently drop the rest — no error and no truncation of the stored body
+    // (the full text is persisted elsewhere); only member-resolution, and thus the
+    // downstream notification fan-out, is bounded. Math.max clamps a negative/garbage env
+    // value to 0 (subList(0, n) throws for n < 0).
+    int effectiveCap = Math.max(0, mentionMaxCandidates);
+    List<String> resolvable = new ArrayList<>(candidates);
+    if (resolvable.size() > effectiveCap) {
+      resolvable = new ArrayList<>(resolvable.subList(0, effectiveCap));
+    }
+    if (resolvable.isEmpty()) {
+      // A cap of 0 (or any negative value, clamped to 0) resolves nobody — skip the query.
+      return Set.of();
+    }
+
     return new LinkedHashSet<>(
-        userRepository.findMemberIdsByProjectIdAndHandles(projectId, candidates));
+        userRepository.findMemberIdsByProjectIdAndHandles(projectId, resolvable));
   }
 }

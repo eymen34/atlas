@@ -86,6 +86,18 @@ When `false`, springdoc deregisters the routes so `/swagger-ui.html` and `/v3/ap
 (`apiDocsEnabled`) defaults `false` to hide docs in production. The build-time spec dump relies on
 the `true` default, so `api/src/main/resources/openapi/openapi.json` is unaffected.
 
+## Application — mentions
+
+| Name | Type | Default | Required | Secret | Modes |
+| --- | --- | --- | --- | --- | --- |
+| `MENTION_MAX_CANDIDATES` | int | `50` | no | no | all |
+
+Advisory soft cap on the number of **distinct** `@mention` candidates the server resolves per
+comment/ticket body (T-043). Handles beyond the cap are silently ignored — no error, and the full
+body text is stored unchanged; only member-resolution and the downstream notification fan-out are
+bounded. A cheap abuse guard, **not** a feature flag (so it is absent from `/api/config/public`).
+Non-positive values (including `Integer.MIN_VALUE`) resolve nobody — they are clamped to `0`.
+
 ## Local-stack-only (Docker Compose containers, not app config)
 
 These configure the bundled `db` / `objectstore` containers in `deploy/docker-compose.yml`. In
