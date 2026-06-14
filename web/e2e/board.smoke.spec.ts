@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Smoke runs against the built bundle with NO backend, so the app is always
 // unauthenticated: the board deep link must redirect to /login and the route chunk
-// (dnd-kit + react-virtual) must load without throwing. The "four columns visible"
+// (dnd-kit) must load without throwing. The "four columns visible"
 // assertion needs an authenticated, project-resolved board → that lives in the
 // real-backend e2e-local spec (board.dnd.local.spec.ts).
 

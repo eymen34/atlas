@@ -3,8 +3,7 @@ import type { Member } from '@/api/projects';
 import type { Label, Ticket, TicketStatus } from '@/api/tickets';
 import { cn } from '@/lib/utils';
 import { BoardTicketCard } from './BoardTicketCard';
-import { STATUS_LABEL, VIRTUALIZE_THRESHOLD } from './statusOrder';
-import { VirtualizedCardList } from './VirtualizedCardList';
+import { STATUS_LABEL } from './statusOrder';
 
 export interface BoardColumnProps {
   status: TicketStatus;
@@ -53,8 +52,6 @@ export function BoardColumn({ status, items, projectKey, memberById, labelById }
       </header>
       {items.length === 0 ? (
         <p className="px-1 py-6 text-center text-xs text-muted-foreground">No tickets</p>
-      ) : items.length > VIRTUALIZE_THRESHOLD ? (
-        <VirtualizedCardList items={items} renderItem={renderCard} />
       ) : (
         <ul className="space-y-2">{items.map(renderCard)}</ul>
       )}
