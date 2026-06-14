@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
  * persists a {@link User} and its {@link PasswordCredential} (BCrypt hash) in a
  * single transaction.
  *
- * <p>Duplicate handling is two-layered: the {@code existsByEmailIgnoreCase}
+ * <p>Duplicate handling is two-layered: the {@code existsByEmailLower}
  * pre-check covers the common case, and the V1 {@code users_email_lower_key}
  * unique index covers the concurrent race — a losing race surfaces as a
  * {@link org.springframework.dao.DataIntegrityViolationException}, which is
@@ -44,7 +44,7 @@ public class RegistrationService {
   public UserRegisteredResponse register(RegisterRequest request) {
     String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
 
-    if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+    if (userRepository.existsByEmailLower(normalizedEmail)) {
       throw new EmailAlreadyRegisteredException(normalizedEmail);
     }
 
