@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test --project=smoke",
     "e2e:auth": "playwright test --project=auth-real-backend",
-    "e2e:local": "playwright test --project=e2e-local"
+    "e2e:local": "playwright test --project=e2e-local",
+    "e2e:full": "playwright test --project=auth-real-backend --project=e2e-local --reporter=html,list"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

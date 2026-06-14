@@ -1,0 +1,135 @@
+name: E2E Full (nightly)
+
+# Backend-dependent Playwright suite against a real docker-compose stack (app + Postgres +
+# MinIO + MailHog). Separate from the fast PR e2e-smoke (Vite preview, no backend) in pr.yml —
+# this workflow is NEVER triggered by pull_request or push (separate_workflows_for_non_pr_events).
+on:
+  schedule:
+    - cron: '0 3 * * *' # nightly 03:00 UTC
+  workflow_dispatch: {}
+
+# Per-event concurrency: a manual workflow_dispatch must NOT cancel an in-flight nightly cron
+# (and vice-versa). cancel-in-progress collapses repeats of the SAME event type only.
+concurrency:
+  group: e2e-full-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-full:
+    name: Backend-dependent E2E (compose stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # the dev compose image runs `mvn spring-boot:run` cold — slow first boot
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Write .env for the ephemeral compose stack
+        # EPHEMERAL CI ONLY — these literals must NEVER be reused in any real environment.
+        # Non-empty values are mandatory: an empty JWT_SECRET breaks JWT signing/verification
+        # (the auth specs could not obtain valid tokens) and an empty OUTBOX_DRAIN_SHARED_SECRET
+        # trips the InternalSecretFilter isBlank() short-circuit. OBJECT_STORAGE_* must equal
+        # MINIO_ROOT_* (the app authenticates to MinIO with those creds), so both derive from one
+        # fallback. Real values can be injected via repo secrets; the literals are the fallback.
+        run: |
+          cp .env.example .env
+          OS_AK='${{ secrets.E2E_OBJECT_STORAGE_ACCESS_KEY || 'minioadmin' }}'
+          OS_SK='${{ secrets.E2E_OBJECT_STORAGE_SECRET_KEY || 'minioadmin123' }}'
+          {
+            echo "JWT_SECRET=${{ secrets.E2E_JWT_SECRET || 'ci-e2e-jwt-secret-ephemeral-do-not-reuse-32chars' }}"
+            echo "OUTBOX_DRAIN_SHARED_SECRET=${{ secrets.E2E_OUTBOX_DRAIN_SHARED_SECRET || 'ci-e2e-outbox-shared-secret-ephemeral' }}"
+            echo "OBJECT_STORAGE_ACCESS_KEY=${OS_AK}"
+            echo "OBJECT_STORAGE_SECRET_KEY=${OS_SK}"
+            echo "MINIO_ROOT_USER=${OS_AK}"
+            echo "MINIO_ROOT_PASSWORD=${OS_SK}"
+          } >> .env
+
+      - name: Start the compose stack
+        run: docker compose -f deploy/docker-compose.yml up -d --build
+
+      - name: Wait for the app to be READY (GET /ready)
+        # The dev image (mvn spring-boot:run) resolves deps + compiles + boots at container
+        # runtime, so the cold first boot can take several minutes — poll generously (~15 min).
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/ready | grep -q '"status":"READY"'; then
+              echo "app READY after ~$((i*10))s"
+              exit 0
+            fi
+            echo "waiting for /ready ($i/90)..."
+            sleep 10
+          done
+          echo "::error::app did not reach READY within ~15 minutes"
+          docker compose -f deploy/docker-compose.yml logs app
+          exit 1
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22' # repo has no web/.nvmrc; mirrors pr.yml's frontend job
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run backend-dependent E2E (auth-real-backend + e2e-local)
+        working-directory: web
+        # The dev compose app at :8080 serves the API only (Dockerfile.dev copies just api/, no
+        # bundled SPA). The Vite dev server (:5173) serves the SPA and proxies /api -> :8080
+        # (vite.config.ts server.proxy) — the documented backend-E2E entrypoint. Setting
+        # E2E_BASE_URL also makes playwright.config.ts skip its preview webServer block, so the
+        # backend projects run against :5173 with no separate preview server.
+        env:
+          E2E_BASE_URL: http://localhost:5173
+        run: |
+          set -e
+          npm run codegen # generate the (gitignored) API client the SPA imports
+          npm run dev > vite-dev.log 2>&1 &
+          VITE_PID=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5173 > /dev/null 2>&1; then
+              echo "vite dev up after ~$((i*2))s"
+              break
+            fi
+            sleep 2
+            if [ "$i" = "30" ]; then
+              echo "::error::Vite dev server did not start"
+              cat vite-dev.log
+              kill "$VITE_PID" 2>/dev/null || true
+              exit 1
+            fi
+          done
+          set +e
+          npm run e2e:full
+          STATUS=$?
+          kill "$VITE_PID" 2>/dev/null || true
+          exit $STATUS
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Playwright traces/screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: web/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Tear down the compose stack
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v

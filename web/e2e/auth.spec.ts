@@ -1,7 +1,7 @@
-// RUN LOCALLY ONLY via `npm run e2e:auth` (= playwright test --project=auth-real-backend).
-// Requires a clean ephemeral compose stack reachable at E2E_BASE_URL (defaults to
-// the Vite dev server http://localhost:5173, which proxies /api to the backend on
-// :8080). NOT wired to CI — CI wiring is deferred to T-038. Set AUTH_E2E_TEARDOWN=1
+// Backend-dependent (auth-real-backend project). Runs in the nightly e2e-full workflow
+// (.github/workflows/e2e-full.yml) and locally via `npm run e2e:full` or `npm run e2e:auth`.
+// Requires a compose stack reachable at E2E_BASE_URL (defaults to the Vite dev server
+// http://localhost:5173, which proxies /api to the backend on :8080). Set AUTH_E2E_TEARDOWN=1
 // for best-effort cleanup hooks.
 //
 // Backend note: this requires the T-012 auth endpoints (login/refresh/logout/me)
