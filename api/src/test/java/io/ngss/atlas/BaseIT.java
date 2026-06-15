@@ -35,6 +35,8 @@ public abstract class BaseIT {
    * as harmless no-ops, so this is safe to call from every IT.
    */
   public static void cleanDatabase(JdbcTemplate jdbc) {
+    // login_attempts (T-033) has no FK in either direction; delete it first as a free-standing table.
+    jdbc.update("DELETE FROM login_attempts");
     jdbc.update("DELETE FROM outbox");
     jdbc.update("DELETE FROM ticket_links");
     jdbc.update("DELETE FROM attachments");

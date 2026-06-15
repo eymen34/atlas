@@ -198,6 +198,16 @@
               }
             },
             "description" : "Invalid credentials"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Too Many Requests — account or IP locked due to repeated failed attempts"
           }
         },
         "summary" : "Authenticate with email + password and receive a token pair",
