@@ -23,9 +23,12 @@ public class InternalTasksController {
   private static final int DRAIN_BATCH_SIZE = 50;
 
   private final OutboxDrainService drainService;
+  private final MaintenanceService maintenanceService;
 
-  public InternalTasksController(OutboxDrainService drainService) {
+  public InternalTasksController(
+      OutboxDrainService drainService, MaintenanceService maintenanceService) {
     this.drainService = drainService;
+    this.maintenanceService = maintenanceService;
   }
 
   @PostMapping("/drain-outbox")
@@ -38,5 +41,19 @@ public class InternalTasksController {
   })
   public DrainResult drainOutbox() {
     return drainService.drain(DRAIN_BATCH_SIZE);
+  }
+
+  @PostMapping("/run-maintenance")
+  @Operation(
+      operationId = "runMaintenance",
+      summary = "Reclaim stuck PROCESSING outbox rows and expire abandoned PENDING uploads")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "Maintenance summary (reclaimedToPending/reclaimedToFailed/expiredUploads)"),
+    @ApiResponse(responseCode = "403", description = "Missing or invalid internal secret")
+  })
+  public MaintenanceResult runMaintenance() {
+    return maintenanceService.runMaintenance();
   }
 }

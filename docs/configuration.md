@@ -67,13 +67,19 @@ handed to the browser (must be client-resolvable). In prod they often point to t
 | Name | Type | Default | Required | Secret | Modes |
 | --- | --- | --- | --- | --- | --- |
 | `OUTBOX_DRAIN_SHARED_SECRET` | string | `change-me-outbox-secret` | yes | yes | all |
+| `OUTBOX_RECLAIM_AFTER_MINUTES` | int | `15` | no | no | all |
+| `ATTACHMENT_PENDING_EXPIRY_HOURS` | int | `24` | no | no | all |
 | `APP_BASE_URL` | URL | `http://localhost:8080` | yes | no | all |
 | `FEATURE_WATCHERS_ENABLED` | bool | `true` | no | no | all |
 | `FEATURE_INLINE_THUMBNAILS_ENABLED` | bool | `true` | no | no | all |
 
 The external cron sends `OUTBOX_DRAIN_SHARED_SECRET` as the **`X-Internal-Secret`** request header
 to `POST /internal/tasks/drain-outbox` (matching `InternalSecretFilter` and the `deploy/cron/`
-manifests).
+manifests). A **separate, less-frequent** cron sends the same secret to
+`POST /internal/tasks/run-maintenance` (T-053); `OUTBOX_RECLAIM_AFTER_MINUTES` and
+`ATTACHMENT_PENDING_EXPIRY_HOURS` tune that sweep (both must be positive — see
+[`docs/outbox.md`](./outbox.md#maintenance-sweep)). `OUTBOX_RECLAIM_AFTER_MINUTES` **must** be set
+well above the maximum handler runtime, or an in-flight row could be reclaimed and double-executed.
 
 ## Application — API docs
 
