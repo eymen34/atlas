@@ -1,6 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Comment } from '@/api/tickets';
+import { renderWithProviders } from '@/test/test-utils';
 import { CommentItem } from '../CommentItem';
 import { MEMBERS_TWO } from './fixtures';
 
@@ -23,7 +24,7 @@ function comment(over: Partial<Comment> = {}): Comment {
 }
 
 function renderItem(c: Comment, currentUserId: string, canModerate = false) {
-  return render(
+  return renderWithProviders(
     <ul>
       <CommentItem
         comment={c}

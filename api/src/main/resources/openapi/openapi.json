@@ -2769,6 +2769,58 @@
         "tags" : [ "tickets" ]
       }
     },
+    "/api/users/{id}" : {
+      "get" : {
+        "description" : "Renders the name of an author who has left a project. Display-only: no email/role/PII. Authenticated; resolves regardless of shared project membership.",
+        "operationId" : "getUserSummary",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserSummaryResponse"
+                }
+              }
+            },
+            "description" : "User summary"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserSummaryResponse"
+                }
+              }
+            },
+            "description" : "Missing or invalid access token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserSummaryResponse"
+                }
+              }
+            },
+            "description" : "No user with that id"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Resolve a user id to a display-only summary (id + displayName)",
+        "tags" : [ "users" ]
+      }
+    },
     "/health" : {
       "get" : {
         "operationId" : "health",
@@ -3839,6 +3891,18 @@
             "type" : "string"
           },
           "email" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }
+      },
+      "UserSummaryResponse" : {
+        "type" : "object",
+        "properties" : {
+          "displayName" : {
             "type" : "string"
           },
           "id" : {

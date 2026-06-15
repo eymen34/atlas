@@ -375,6 +375,27 @@ class OpenApiDocsIT {
   }
 
   @Test
+  void t044UserSummaryEndpointPresentAndDisplayOnly() throws Exception {
+    JsonNode root =
+        objectMapper.readTree(
+            given().when().get("/v3/api-docs").then().statusCode(200).extract().asString());
+
+    JsonNode getOp = root.path("paths").path("/api/users/{id}").path("get");
+    assertThat(getOp.path("operationId").asString()).isEqualTo("getUserSummary");
+    // 401 (unauthenticated) and 404 (unknown id) are documented; it is bearer-secured.
+    assertThat(getOp.path("responses").has("404")).as("getUserSummary 404").isTrue();
+    assertThat(getOp.path("security").path(0).has("bearerAuth")).isTrue();
+
+    // The DTO is display-only: id + displayName, and crucially NO email (no PII leak).
+    JsonNode props =
+        root.path("components").path("schemas").path("UserSummaryResponse").path("properties");
+    assertThat(props.isMissingNode()).as("UserSummaryResponse schema present").isFalse();
+    assertThat(props.has("id")).as("UserSummaryResponse.id").isTrue();
+    assertThat(props.has("displayName")).as("UserSummaryResponse.displayName").isTrue();
+    assertThat(props.has("email")).as("UserSummaryResponse must NOT expose email").isFalse();
+  }
+
+  @Test
   void meAndLogoutDeclareBearerAuthSecurityRequirement() throws Exception {
     JsonNode root =
         objectMapper.readTree(
