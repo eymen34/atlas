@@ -19,27 +19,28 @@ export class ApiHttpError extends Error {
 }
 
 async function postJson(path: string, body: unknown): Promise<Response> {
-  // Auth endpoints are excluded from the silent-refresh wrapper; hit the network
-  // directly so no Bearer/refresh machinery is involved.
+  // Auth endpoints are excluded from the silent-refresh wrapper; hit the network directly so no
+  // Bearer/refresh machinery is involved. credentials:'include' so login RECEIVES the Set-Cookie
+  // refresh cookie (T-048).
   return nativeFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    credentials: 'include',
   });
 }
 
 /**
- * AuthResponse carries no user (contract: {accessToken, refreshToken,
- * expiresIn}), so we stash the tokens and resolve the user with a single GET
+ * AuthResponse carries only {accessToken, expiresIn} (T-048: the refresh token is the HttpOnly
+ * cookie, never in the body), so we stash the access token and resolve the user with a single GET
  * /me before marking the session authenticated.
  */
 async function establishSession(
   accessToken: string,
-  refreshToken: string,
   expiresIn: number | undefined
 ): Promise<void> {
   const accessTokenExpiresAt = Date.now() + (expiresIn ?? ACCESS_TTL_SECONDS) * 1000;
-  useAuthStore.setState({ accessToken, refreshToken, accessTokenExpiresAt, status: 'authenticating' });
+  useAuthStore.setState({ accessToken, accessTokenExpiresAt, status: 'authenticating' });
   const meRes = await nativeFetch('/api/auth/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -47,7 +48,7 @@ async function establishSession(
     throw new ApiHttpError(meRes.status, await meRes.json().catch(() => null));
   }
   const user: UserProfile = userProfileSchema.parse(await meRes.json());
-  useAuthStore.getState().setTokens({ accessToken, refreshToken, accessTokenExpiresAt, user });
+  useAuthStore.getState().setTokens({ accessToken, accessTokenExpiresAt, user });
 }
 
 export function useLogin() {
@@ -60,7 +61,7 @@ export function useLogin() {
         throw new ApiHttpError(res.status, await res.json().catch(() => null));
       }
       const data = authResponseSchema.parse(await res.json());
-      await establishSession(data.accessToken, data.refreshToken, data.expiresIn);
+      await establishSession(data.accessToken, data.expiresIn);
     },
     onSuccess: () => {
       const from =
@@ -100,21 +101,18 @@ export function useLogout() {
   const navigate = useNavigate();
   return useMutation<void, Error, void>({
     mutationFn: async () => {
-      const { refreshToken, accessToken } = useAuthStore.getState();
-      if (!refreshToken) {
-        return;
-      }
+      // T-048: body-less POST; the refresh token rides the HttpOnly cookie (credentials:'include'
+      // sends it) and the Bearer access token authenticates the call. Always clear locally
+      // (onSettled), whether or not the server round-trip succeeds.
+      const { accessToken } = useAuthStore.getState();
       const attempt = async (): Promise<void> => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 3000);
         try {
           await nativeFetch('/api/auth/logout', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-            },
-            body: JSON.stringify({ refreshToken }),
+            credentials: 'include',
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
             signal: controller.signal,
           });
         } finally {

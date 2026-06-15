@@ -30,7 +30,6 @@ describe('api client (T-013)', () => {
   it('does not inject a Bearer header or refresh on auth endpoints', async () => {
     useAuthStore.setState({
       accessToken: 'acc',
-      refreshToken: 'r',
       accessTokenExpiresAt: Date.now() + 60_000,
       user: { id: '1', email: 'a@b.com', displayName: 'A' },
       status: 'authenticated',

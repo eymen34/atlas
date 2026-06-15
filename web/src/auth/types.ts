@@ -5,10 +5,12 @@ export interface UserProfile {
   displayName: string;
 }
 
-/** Raw token pair as returned by login/refresh (before expiry derivation). */
+/**
+ * Access token returned by login/refresh (before expiry derivation). T-048: there is no longer a
+ * refresh token in JS — it lives in the HttpOnly atlas_refresh cookie.
+ */
 export interface TokenBundle {
   accessToken: string;
-  refreshToken: string;
 }
 
 /**

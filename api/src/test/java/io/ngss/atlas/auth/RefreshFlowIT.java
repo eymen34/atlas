@@ -3,6 +3,8 @@ package io.ngss.atlas.auth;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 
 import io.ngss.atlas.Application;
 import io.ngss.atlas.BaseIT;
@@ -84,25 +86,27 @@ class RefreshFlowIT {
     RestAssured.reset();
   }
 
+  /** T-048: the raw refresh token is delivered as the atlas_refresh cookie, not in the body. */
   private String loginRefreshToken() {
+    return login(EMAIL, PW);
+  }
+
+  /** T-048: refresh reads the cookie (body-less POST) and rotates a new cookie. */
+  private Response refresh(String rawToken) {
     return given()
-        .contentType(ContentType.JSON)
-        .body("{\"email\":\"" + EMAIL + "\",\"password\":\"" + PW + "\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, rawToken)
         .when()
-        .post("/api/auth/login")
+        .post("/api/auth/refresh");
+  }
+
+  /** Refresh with the cookie and return the NEW rotated refresh token (from the Set-Cookie). */
+  private String rotate(String rawToken) {
+    return refresh(rawToken)
         .then()
         .statusCode(200)
         .extract()
-        .jsonPath()
-        .getString("refreshToken");
-  }
-
-  private Response refresh(String rawToken) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"" + rawToken + "\"}")
-        .when()
-        .post("/api/auth/refresh");
+        .detailedCookie(AuthCookieFactory.COOKIE_NAME)
+        .getValue();
   }
 
   // ───────────────────────── T-031 reuse-detection helpers ─────────────────────────
@@ -128,8 +132,8 @@ class RefreshFlowIT {
         .then()
         .statusCode(200)
         .extract()
-        .jsonPath()
-        .getString("refreshToken");
+        .detailedCookie(AuthCookieFactory.COOKIE_NAME)
+        .getValue();
   }
 
   /** The {@code revoked_at} of the row behind a raw token (null = live). */
@@ -174,8 +178,8 @@ class RefreshFlowIT {
     String oldRaw = loginRefreshToken();
 
     Response resp = refresh(oldRaw);
-    resp.then().statusCode(200);
-    String newRaw = resp.jsonPath().getString("refreshToken");
+    resp.then().statusCode(200).body("$", not(hasKey("refreshToken")));
+    String newRaw = resp.getDetailedCookie(AuthCookieFactory.COOKIE_NAME).getValue();
     assertThat(newRaw).isNotBlank().isNotEqualTo(oldRaw);
 
     String oldHash = RefreshTokenService.sha256Hex(oldRaw);
@@ -238,6 +242,20 @@ class RefreshFlowIT {
   }
 
   @Test
+  void refreshWithJsonBodyReturns415() {
+    // QG-3: /api/auth/refresh is body-less (cookie transport); an erroneous JSON body → 415.
+    String raw = loginRefreshToken();
+    given()
+        .cookie(AuthCookieFactory.COOKIE_NAME, raw)
+        .contentType(ContentType.JSON)
+        .body("{\"refreshToken\":\"x\"}")
+        .when()
+        .post("/api/auth/refresh")
+        .then()
+        .statusCode(415);
+  }
+
+  @Test
   void concurrentRotateYieldsExactlyOneWinner() throws InterruptedException {
     String oldRaw = loginRefreshToken();
     CountDownLatch start = new CountDownLatch(1);
@@ -281,7 +299,7 @@ class RefreshFlowIT {
   @Test
   void rotatedTokenReplay_revokesAllUserLiveTokens_AC1() {
     String t1 = loginRefreshToken();
-    String t2 = refresh(t1).then().statusCode(200).extract().jsonPath().getString("refreshToken");
+    String t2 = rotate(t1);
     String x = loginRefreshToken(); // independent family, SAME user (alice)
     UUID alice = userIdOf(x);
     assertThat(liveCountForUser(alice)).as("T2 + X live before replay").isEqualTo(2L);
@@ -326,8 +344,8 @@ class RefreshFlowIT {
   @Test
   void normalRotationChain_noSpuriousRevoke_AC3() {
     String t1 = loginRefreshToken();
-    String t2 = refresh(t1).then().statusCode(200).extract().jsonPath().getString("refreshToken");
-    String t3 = refresh(t2).then().statusCode(200).extract().jsonPath().getString("refreshToken");
+    String t2 = rotate(t1);
+    String t3 = rotate(t2);
 
     assertThat(replacedByOf(t1)).isEqualTo(idOf(t2));
     assertThat(replacedByOf(t2)).isEqualTo(idOf(t3));
@@ -358,7 +376,7 @@ class RefreshFlowIT {
     String y = login("bob@example.com", "BobPass123!"); // userB live token
 
     String t1 = loginRefreshToken(); // userA (alice)
-    String t2 = refresh(t1).then().statusCode(200).extract().jsonPath().getString("refreshToken");
+    String t2 = rotate(t1);
     String x = loginRefreshToken();
 
     refresh(t1).then().statusCode(401);

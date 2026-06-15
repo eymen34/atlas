@@ -12,13 +12,13 @@ export const registerSchema = z.object({
 });
 
 /**
- * Backend AuthResponse shape (login/refresh). The backend returns expiresIn
- * (seconds); accessTokenExpiresAt is accepted too in case a future backend adds
- * an absolute timestamp. user is included so login needs no extra /me round-trip.
+ * Backend AuthResponse shape (login/refresh). T-048: the refresh token is NO LONGER in the body —
+ * it is delivered as the HttpOnly `atlas_refresh` cookie, out of JS reach. The body carries only
+ * the short-lived access token + its TTL (expiresIn, seconds); accessTokenExpiresAt is accepted in
+ * case a future backend adds an absolute timestamp. user is optional (login resolves it via /me).
  */
 export const authResponseSchema = z.object({
   accessToken: z.string().min(1),
-  refreshToken: z.string().min(1),
   expiresIn: z.number().optional(),
   accessTokenExpiresAt: z.number().optional(),
   user: z

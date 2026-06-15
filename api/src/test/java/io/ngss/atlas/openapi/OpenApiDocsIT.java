@@ -61,7 +61,7 @@ class OpenApiDocsIT {
   }
 
   @Test
-  void allFiveAuthPathsAndAllSixDtoSchemasArePresent() throws Exception {
+  void authPathsPresentAndRefreshLogoutBodiesRemovedByCookieCutover() throws Exception {
     String body =
         given().when().get("/v3/api-docs").then().statusCode(200).extract().asString();
     JsonNode root = objectMapper.readTree(body);
@@ -83,13 +83,24 @@ class OpenApiDocsIT {
     JsonNode schemas = root.get("components").get("schemas");
     assertThat(schemas.has("RegisterRequest")).as("RegisterRequest schema").isTrue();
     assertThat(schemas.has("LoginRequest")).as("LoginRequest schema").isTrue();
-    assertThat(schemas.has("RefreshRequest")).as("RefreshRequest schema").isTrue();
     assertThat(schemas.has("AuthResponse")).as("AuthResponse schema").isTrue();
     assertThat(schemas.has("UserProfileResponse")).as("UserProfileResponse schema").isTrue();
-    // T-012 replaced the 501 stubs: NotImplementedResponse is gone; LogoutRequest
-    // and UserRegisteredResponse are now part of the contract.
     assertThat(schemas.has("UserRegisteredResponse")).as("UserRegisteredResponse schema").isTrue();
-    assertThat(schemas.has("LogoutRequest")).as("LogoutRequest schema").isTrue();
+
+    // T-048 cookie cutover: the refresh token moved to the HttpOnly atlas_refresh cookie. The two
+    // request DTOs are DELETED, the body-less endpoints declare NO requestBody, and AuthResponse no
+    // longer carries refreshToken (the schema component count drops by 2).
+    assertThat(schemas.has("RefreshRequest")).as("RefreshRequest schema removed").isFalse();
+    assertThat(schemas.has("LogoutRequest")).as("LogoutRequest schema removed").isFalse();
+    assertThat(paths.path("/api/auth/refresh").path("post").has("requestBody"))
+        .as("/api/auth/refresh has no requestBody")
+        .isFalse();
+    assertThat(paths.path("/api/auth/logout").path("post").has("requestBody"))
+        .as("/api/auth/logout has no requestBody")
+        .isFalse();
+    assertThat(schemas.path("AuthResponse").path("properties").has("refreshToken"))
+        .as("AuthResponse no longer exposes refreshToken")
+        .isFalse();
   }
 
   @Test

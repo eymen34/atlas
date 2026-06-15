@@ -1,29 +1,30 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAuthStore } from '../../store/authStore';
 
+const USER = { id: 'u', email: 'e@x.com', displayName: 'n' };
+
 describe('useAuthStore', () => {
   beforeEach(() => {
     useAuthStore.getState().clearTokens();
   });
 
-  it('starts with both tokens null', () => {
-    const state = useAuthStore.getState();
-    expect(state.accessToken).toBeNull();
-    expect(state.refreshToken).toBeNull();
+  it('starts with the access token null', () => {
+    // T-048: there is no refreshToken in the store anymore — it is the HttpOnly cookie.
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 
-  it('setTokens stores both the access and refresh tokens', () => {
-    useAuthStore.getState().setTokens('access-1', 'refresh-1');
-    const state = useAuthStore.getState();
-    expect(state.accessToken).toBe('access-1');
-    expect(state.refreshToken).toBe('refresh-1');
+  it('setTokens stores the access token (+ expiry + user)', () => {
+    useAuthStore
+      .getState()
+      .setTokens({ accessToken: 'access-1', accessTokenExpiresAt: 1, user: USER });
+    expect(useAuthStore.getState().accessToken).toBe('access-1');
   });
 
-  it('clearTokens resets both tokens to null', () => {
-    useAuthStore.getState().setTokens('access-1', 'refresh-1');
+  it('clearTokens resets the access token to null', () => {
+    useAuthStore
+      .getState()
+      .setTokens({ accessToken: 'access-1', accessTokenExpiresAt: 1, user: USER });
     useAuthStore.getState().clearTokens();
-    const state = useAuthStore.getState();
-    expect(state.accessToken).toBeNull();
-    expect(state.refreshToken).toBeNull();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 });
