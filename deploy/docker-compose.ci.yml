@@ -1,0 +1,13 @@
+# CI-only overlay (T-036): run the PRE-BUILT production image (atlas:ci-test) under the dev
+# compose stack for the auth-flow smoke. The base compose `app` service builds Dockerfile.dev;
+# this overlay swaps in the already-built jlink image and disables the in-container curl
+# healthcheck (the slim runtime has no curl — CI polls /ready from the host instead).
+#
+# Usage (docker-build CI job):
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml up -d --no-build
+services:
+  app:
+    image: atlas:ci-test
+    pull_policy: never
+    healthcheck:
+      disable: true
