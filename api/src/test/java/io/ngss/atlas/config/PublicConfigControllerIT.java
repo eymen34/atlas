@@ -1,6 +1,7 @@
 package io.ngss.atlas.config;
 
 import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 import io.ngss.atlas.Application;
@@ -72,6 +73,17 @@ class PublicConfigControllerIT {
         .then()
         .statusCode(200)
         .body("features.watchers", equalTo(true)); // default flag on
+  }
+
+  @Test
+  void publicConfig_doesNotExposeInlineThumbnailsFlag() {
+    // SEC-1 (T-040): the inline-thumbnails flag is INTERNAL (server-side behaviour only) and must
+    // never leak into the unauthenticated public config — in any naming variant.
+    String body = given().get("/api/config/public").then().statusCode(200).extract().asString();
+    assertThat(body)
+        .doesNotContain("inline-thumbnails")
+        .doesNotContain("inlineThumbnails")
+        .doesNotContain("FEATURE_INLINE_THUMBNAILS_ENABLED");
   }
 
   @Test
