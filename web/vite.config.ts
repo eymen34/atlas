@@ -16,6 +16,28 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // T-046: isolate the TipTap / ProseMirror editor stack (~700 kB) into its own
+        // chunk so it no longer inflates the main entry bundle. The read-only renderer
+        // (code-split via React.lazy) and the edit editors all resolve their TipTap
+        // imports from this shared chunk, keeping the main chunk under the advisory.
+        manualChunks(id) {
+          if (
+            id.includes('node_modules') &&
+            (id.includes('@tiptap') ||
+              id.includes('prosemirror') ||
+              id.includes('orderedmap') ||
+              id.includes('rope-sequence') ||
+              id.includes('w3c-keyname'))
+          ) {
+            return 'tiptap';
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,

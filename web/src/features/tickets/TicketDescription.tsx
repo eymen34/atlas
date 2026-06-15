@@ -1,5 +1,3 @@
-import { EditorContent, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import { lazy, Suspense, useState } from 'react';
 import type { Ticket } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
@@ -8,6 +6,9 @@ import { useUpdateTicket } from './hooks';
 // Edit-mode editor is code-split: it only loads when the user clicks Edit, keeping
 // TipTap's edit bundle out of the initial detail-page payload.
 const TicketDescriptionEditor = lazy(() => import('./TicketDescriptionEditor'));
+// Read-only renderer is likewise code-split (T-046): the same TipTap-backed chunk
+// shared with comment bodies, so the read-only renderer isn't eagerly bundled.
+const ReadOnlyRichText = lazy(() => import('./ReadOnlyRichText'));
 
 export interface TicketDescriptionProps {
   idOrKey: string;
@@ -24,17 +25,6 @@ export function TicketDescription({ idOrKey, ticket }: TicketDescriptionProps) {
   const [editing, setEditing] = useState(false);
   const update = useUpdateTicket(idOrKey, ticket);
   const html = ticket.description ?? '';
-
-  // Recreated when the html changes (e.g. after a save) so read mode stays in sync.
-  const editor = useEditor(
-    {
-      extensions: [StarterKit],
-      content: html || '<p></p>',
-      editable: false,
-      immediatelyRender: false,
-    },
-    [html]
-  );
 
   if (editing) {
     return (
@@ -71,7 +61,16 @@ export function TicketDescription({ idOrKey, ticket }: TicketDescriptionProps) {
         className="prose prose-sm dark:prose-invert max-w-none rounded-md border border-input/60 px-3 py-2 text-sm"
       >
         {html ? (
-          <EditorContent editor={editor} />
+          <Suspense
+            fallback={
+              <div data-testid="description-readonly-fallback" className="space-y-2" aria-hidden>
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+              </div>
+            }
+          >
+            <ReadOnlyRichText html={html} />
+          </Suspense>
         ) : (
           <p className="text-muted-foreground">No description.</p>
         )}

@@ -1,6 +1,6 @@
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import type { Member } from '@/api/projects';
 import type { Comment } from '@/api/tickets';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { useActorLookup } from '@/hooks/useActorLookup';
 import { formatRelativeTime } from '@/lib/relativeTime';
 import { mentionExtension } from './mentionConfig';
+
+// Read-only body renderer is code-split (T-046) into the shared TipTap-backed chunk
+// reused with the ticket description. The inline edit editor below stays eager.
+const ReadOnlyRichText = lazy(() => import('./ReadOnlyRichText'));
 
 export interface CommentItemProps {
   comment: Comment;
@@ -88,17 +92,6 @@ export function CommentItem({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Read-only renderer; recreated when the body changes (e.g. after an edit).
-  const editor = useEditor(
-    {
-      extensions: [StarterKit, mentionExtension],
-      editable: false,
-      content: comment.body ?? '<p></p>',
-      immediatelyRender: false,
-    },
-    [comment.body]
-  );
-
   if (comment.deleted) {
     return (
       <li data-testid="comment-item" className="text-sm text-muted-foreground italic">
@@ -141,7 +134,17 @@ export function CommentItem({
               data-testid="comment-body"
               className="prose prose-sm dark:prose-invert max-w-none text-sm"
             >
-              <EditorContent editor={editor} />
+              <Suspense
+                fallback={
+                  <div
+                    data-testid="comment-body-fallback"
+                    className="h-4 w-2/3 animate-pulse rounded bg-muted"
+                    aria-hidden
+                  />
+                }
+              >
+                <ReadOnlyRichText html={comment.body ?? ''} mentions />
+              </Suspense>
             </div>
             {canModify && (
               <div className="flex gap-2">
