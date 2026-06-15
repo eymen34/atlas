@@ -219,14 +219,16 @@ public class AuthController {
 
   /**
    * The cookie-based refresh/logout endpoints take NO request body — the refresh token is read from
-   * the {@code atlas_refresh} cookie. A body-less POST (no Content-Type) is the normal path; a
-   * client that erroneously sends a body gets 415 (T-048, QG-3). Injecting {@link
-   * HttpServletRequest} (rather than a {@code @RequestHeader}) keeps this off the OpenAPI parameter
-   * list.
+   * the {@code atlas_refresh} cookie. Reject only a request carrying an ACTUAL body
+   * ({@code Content-Length > 0}) with 415 (T-048, QG-3); a body-less POST always proceeds to the
+   * cookie auth path, REGARDLESS of any {@code Content-Type} header. (Keying off the Content-Type
+   * header alone wrongly 415'd valid body-less calls — the browser/curl send no Content-Type, but
+   * RestAssured attaches one to body-less POSTs.) Injecting {@link HttpServletRequest} (rather than
+   * a {@code @RequestHeader}) keeps this off the OpenAPI parameter list.
    */
   private static void rejectBody(HttpServletRequest request)
       throws HttpMediaTypeNotSupportedException {
-    if (request.getContentType() != null) {
+    if (request.getContentLengthLong() > 0) {
       throw new HttpMediaTypeNotSupportedException(
           "This endpoint takes no request body; the refresh token is read from the "
               + AuthCookieFactory.COOKIE_NAME
