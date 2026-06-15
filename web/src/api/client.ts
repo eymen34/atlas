@@ -68,10 +68,14 @@ function withBearer(init: RequestInit | undefined, token: string | null): Reques
 }
 
 /**
- * Wraps a fetch call with Bearer injection and silent refresh. On 401 with a
- * refresh token present, awaits the singleton refresh and retries once; on no
- * token or refresh failure, invokes the onUnauthorized handler and returns the
+ * Wraps a fetch call with Bearer injection and silent refresh. On 401, awaits the singleton
+ * refresh and retries once; on refresh failure, invokes the onUnauthorized handler and returns the
  * original 401.
+ *
+ * T-048: the refresh credential is the HttpOnly `atlas_refresh` cookie (Path=/api/auth), which JS
+ * cannot read — so there is NO refresh-token gate to check anymore; a 401 ALWAYS attempts a refresh
+ * and the body-less POST /api/auth/refresh succeeds iff the browser holds a valid cookie. Auth
+ * endpoints stay excluded so a refresh 401 never recurses into the refresh loop.
  */
 export async function fetchWithAuth(
   input: RequestInfo | URL,
@@ -86,11 +90,6 @@ export async function fetchWithAuth(
     withBearer(init, useAuthStore.getState().accessToken)
   );
   if (response.status !== 401) {
-    return response;
-  }
-
-  if (!useAuthStore.getState().refreshToken) {
-    onUnauthorizedHandler();
     return response;
   }
 

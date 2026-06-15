@@ -3,6 +3,8 @@ package io.ngss.atlas.auth;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 import com.nimbusds.jose.crypto.MACVerifier;
@@ -11,6 +13,7 @@ import io.ngss.atlas.Application;
 import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import io.restassured.http.Cookie;
 import io.restassured.response.Response;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -110,12 +113,16 @@ class LoginIT {
         .statusCode(200)
         .contentType(ContentType.JSON)
         .body("accessToken", notNullValue())
-        .body("refreshToken", notNullValue())
-        .body("expiresIn", equalTo(900));
+        .body("expiresIn", equalTo(900))
+        // T-048: the refresh token is NO LONGER in the body — it is the HttpOnly cookie.
+        .body("$", not(hasKey("refreshToken")));
 
     String accessToken = resp.jsonPath().getString("accessToken");
-    String refreshToken = resp.jsonPath().getString("refreshToken");
-    assertThat(refreshToken).isNotBlank().isNotEqualTo(accessToken);
+    Cookie refreshCookie = resp.getDetailedCookie(AuthCookieFactory.COOKIE_NAME);
+    assertThat(refreshCookie).as("Set-Cookie atlas_refresh present on login").isNotNull();
+    assertThat(refreshCookie.getValue()).isNotBlank().isNotEqualTo(accessToken);
+    assertThat(refreshCookie.isHttpOnly()).as("HttpOnly").isTrue();
+    assertThat(refreshCookie.getPath()).isEqualTo("/api/auth");
 
     SignedJWT jwt = SignedJWT.parse(accessToken);
     assertThat(jwt.verify(new MACVerifier(SECRET.getBytes(StandardCharsets.UTF_8)))).isTrue();
@@ -159,7 +166,7 @@ class LoginIT {
   @Test
   void loginPersistsExactlyOneHashedRefreshTokenRow() {
     register(ALICE_EMAIL, ALICE_PW, "Alice");
-    String refreshToken = login(ALICE_EMAIL, ALICE_PW).jsonPath().getString("refreshToken");
+    String refreshToken = login(ALICE_EMAIL, ALICE_PW).getCookie(AuthCookieFactory.COOKIE_NAME);
 
     List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM refresh_tokens");
     assertThat(rows).hasSize(1);

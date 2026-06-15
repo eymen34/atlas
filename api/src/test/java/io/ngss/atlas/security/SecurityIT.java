@@ -14,6 +14,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import io.ngss.atlas.Application;
+import io.ngss.atlas.auth.AuthCookieFactory;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 import java.nio.charset.StandardCharsets;
@@ -145,10 +146,10 @@ class SecurityIT {
 
   @Test
   void refreshInvalidTokenReturns401() {
-    // T-012 made refresh real. An unknown/garbage refresh token → 401.
+    // T-012 made refresh real; T-048 moved the token to the cookie (body-less POST). An
+    // unknown/garbage refresh COOKIE → 401. No Content-Type is set (a body would now be 415).
     given()
-        .contentType("application/json")
-        .body("{\"refreshToken\":\"abc\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, "abc")
         .when()
         .post("/api/auth/refresh")
         .then()

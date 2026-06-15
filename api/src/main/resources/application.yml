@@ -128,6 +128,21 @@ app:
   mail:
     from: ${SMTP_FROM:noreply@atlas.local}
   base-url: ${APP_BASE_URL:http://localhost:8080}
+  # T-048: refresh-token cookie. The refresh token is delivered ONLY as this HttpOnly
+  # `atlas_refresh` cookie (never in the response body / localStorage), so JS cannot read the
+  # long-lived credential — closing the XSS-exfiltration risk of the old localStorage scheme.
+  # secure=true by default (HTTPS prod); dev/test set APP_AUTH_COOKIE_SECURE=false because there is
+  # no TLS on localhost. max-age-days tracks REFRESH_TOKEN_TTL_DAYS so the cookie expiry matches the
+  # refresh-token TTL. SameSite=Lax is the CSRF defence — see docs/security.md (csrf().disable()
+  # stays, by design). The authoritative cookie NAME is the AuthCookieFactory.COOKIE_NAME constant;
+  # the `name` key below is config documentation only.
+  auth:
+    cookie:
+      secure: ${APP_AUTH_COOKIE_SECURE:true}
+      name: atlas_refresh
+      path: /api/auth
+      same-site: Lax
+      max-age-days: ${REFRESH_TOKEN_TTL_DAYS:30}
   # T-023: feature flags. FEATURE_WATCHERS_ENABLED is NOT APP_-prefixed (same as
   # JWT_SECRET); default true. Surfaced unauthenticated via GET /api/config/public.
   feature:

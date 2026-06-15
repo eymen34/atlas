@@ -6,9 +6,9 @@ import { useAuthStore } from '../../store/authStore';
 import { server } from '../../test/msw/server';
 
 function seedAuthenticated() {
+  // T-048: no refreshToken in the store — it is the HttpOnly atlas_refresh cookie.
   useAuthStore.setState({
     accessToken: 'old-access',
-    refreshToken: 'refresh-1',
     accessTokenExpiresAt: Date.now() - 1000,
     user: { id: 'u1', email: 'a@b.com', displayName: 'Alice' },
     status: 'authenticated',
@@ -74,8 +74,11 @@ describe('refresh singleton', () => {
     expect(res.status).toBe(401);
   });
 
-  it('401 with no refresh token → onUnauthorized, no refresh attempt', async () => {
-    useAuthStore.setState({ refreshToken: null });
+  it('401 ALWAYS attempts a cookie refresh, even with no token in the store (unconditional)', async () => {
+    // T-048: the refresh credential is the HttpOnly cookie, not a store field — so there is no
+    // store-token gate; a 401 always attempts the body-less refresh, which fails (here, 401) when
+    // the browser holds no valid cookie → onUnauthorized.
+    useAuthStore.setState({ accessToken: null });
     let refreshCount = 0;
     const onUnauthorized = vi.fn();
     setOnUnauthorized(onUnauthorized);
@@ -83,13 +86,13 @@ describe('refresh singleton', () => {
       http.get('/api/protected', () => new HttpResponse(null, { status: 401 })),
       http.post('/api/auth/refresh', () => {
         refreshCount += 1;
-        return HttpResponse.json({ accessToken: 'x', refreshToken: 'y', expiresIn: 900 });
+        return new HttpResponse(null, { status: 401 });
       })
     );
 
     await fetchWithAuth('/api/protected');
 
-    expect(refreshCount).toBe(0);
+    expect(refreshCount).toBe(1);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,8 +2,6 @@ package io.ngss.atlas.auth;
 
 import io.ngss.atlas.auth.dto.AuthResponse;
 import io.ngss.atlas.auth.dto.LoginRequest;
-import io.ngss.atlas.auth.dto.LogoutRequest;
-import io.ngss.atlas.auth.dto.RefreshRequest;
 import io.ngss.atlas.auth.dto.RegisterRequest;
 import io.ngss.atlas.auth.dto.UserProfileResponse;
 import io.ngss.atlas.auth.dto.UserRegisteredResponse;
@@ -26,11 +24,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -61,6 +63,7 @@ public class AuthController {
   private final PasswordCredentialRepository passwordCredentialRepository;
   private final PasswordEncoder passwordEncoder;
   private final LoginAttemptService loginAttemptService;
+  private final AuthCookieFactory authCookieFactory;
 
   public AuthController(
       RegistrationService registrationService,
@@ -69,7 +72,8 @@ public class AuthController {
       UserRepository userRepository,
       PasswordCredentialRepository passwordCredentialRepository,
       PasswordEncoder passwordEncoder,
-      LoginAttemptService loginAttemptService) {
+      LoginAttemptService loginAttemptService,
+      AuthCookieFactory authCookieFactory) {
     this.registrationService = registrationService;
     this.jwtIssuer = jwtIssuer;
     this.refreshTokenService = refreshTokenService;
@@ -77,6 +81,7 @@ public class AuthController {
     this.passwordCredentialRepository = passwordCredentialRepository;
     this.passwordEncoder = passwordEncoder;
     this.loginAttemptService = loginAttemptService;
+    this.authCookieFactory = authCookieFactory;
   }
 
   @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -133,39 +138,67 @@ public class AuthController {
     loginAttemptService.clearAccountBucket(email);
     String accessToken = jwtIssuer.issue(user.getId());
     String refreshToken = refreshTokenService.issue(user.getId());
-    return ResponseEntity.ok(
-        new AuthResponse(accessToken, refreshToken, jwtIssuer.accessTtlSeconds()));
+    // T-048: deliver the refresh token as the HttpOnly atlas_refresh cookie (out of JS reach),
+    // never in the body. credentials:'include' on the client receives it.
+    ResponseCookie cookie = authCookieFactory.buildRefreshCookie(refreshToken);
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(new AuthResponse(accessToken, jwtIssuer.accessTtlSeconds()));
   }
 
-  @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
-  @Operation(summary = "Exchange a refresh token for a fresh access + refresh pair")
+  @PostMapping("/refresh")
+  @Operation(
+      summary = "Exchange the refresh cookie for a fresh access token + a rotated refresh cookie")
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",
         description = "Rotated",
         content = @Content(schema = @Schema(implementation = AuthResponse.class))),
-    @ApiResponse(responseCode = "400", description = "Validation error"),
-    @ApiResponse(responseCode = "401", description = "Invalid or expired refresh token")
+    @ApiResponse(responseCode = "401", description = "Missing, invalid, or expired refresh cookie"),
+    @ApiResponse(
+        responseCode = "415",
+        description = "Unexpected request body (this endpoint is body-less)")
   })
-  public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest req) {
-    RefreshTokenService.RotateResult rotated = refreshTokenService.rotate(req.refreshToken());
+  public ResponseEntity<AuthResponse> refresh(
+      @CookieValue(value = AuthCookieFactory.COOKIE_NAME, required = false) String rawRefresh,
+      HttpServletRequest request)
+      throws HttpMediaTypeNotSupportedException {
+    rejectBody(request);
+    // T-048: the raw refresh token comes ONLY from the HttpOnly cookie — no body, no fallback.
+    if (rawRefresh == null || rawRefresh.isBlank()) {
+      throw new InvalidCredentialsException();
+    }
+    RefreshTokenService.RotateResult rotated = refreshTokenService.rotate(rawRefresh);
     String accessToken = jwtIssuer.issue(rotated.userId());
-    return ResponseEntity.ok(
-        new AuthResponse(accessToken, rotated.newRaw(), jwtIssuer.accessTtlSeconds()));
+    ResponseCookie cookie = authCookieFactory.buildRefreshCookie(rotated.newRaw());
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(new AuthResponse(accessToken, jwtIssuer.accessTtlSeconds()));
   }
 
-  @PostMapping(value = "/logout", consumes = MediaType.APPLICATION_JSON_VALUE)
+  @PostMapping("/logout")
   @SecurityRequirement(name = "bearerAuth")
-  @Operation(summary = "Revoke the caller's refresh token")
+  @Operation(summary = "Revoke the caller's refresh token (read from the cookie) and clear the cookie")
   @ApiResponses({
-    @ApiResponse(responseCode = "204", description = "Logged out"),
-    @ApiResponse(responseCode = "400", description = "Validation error"),
+    @ApiResponse(responseCode = "204", description = "Logged out (cookie cleared; idempotent)"),
     @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
-    @ApiResponse(responseCode = "403", description = "Refresh token belongs to another user")
+    @ApiResponse(responseCode = "403", description = "Refresh token belongs to another user"),
+    @ApiResponse(
+        responseCode = "415",
+        description = "Unexpected request body (this endpoint is body-less)")
   })
-  public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest req) {
-    refreshTokenService.revokeByRawToken(req.refreshToken(), currentUserId());
-    return ResponseEntity.noContent().build();
+  public ResponseEntity<Void> logout(
+      @CookieValue(value = AuthCookieFactory.COOKIE_NAME, required = false) String rawRefresh,
+      HttpServletRequest request)
+      throws HttpMediaTypeNotSupportedException {
+    rejectBody(request);
+    // Absent cookie → still 204 (idempotent). A present cookie is revoked; a token belonging to
+    // another user still 403s via revokeByRawToken.
+    if (rawRefresh != null && !rawRefresh.isBlank()) {
+      refreshTokenService.revokeByRawToken(rawRefresh, currentUserId());
+    }
+    ResponseCookie clear = authCookieFactory.buildClearCookie();
+    return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, clear.toString()).build();
   }
 
   @PostMapping("/logout-all")
@@ -179,7 +212,28 @@ public class AuthController {
   })
   public ResponseEntity<Void> logoutAll() {
     refreshTokenService.logoutAll(currentUserId());
-    return ResponseEntity.noContent().build();
+    // T-048: the other devices' tokens are revoked server-side; clear THIS browser's cookie too.
+    ResponseCookie clear = authCookieFactory.buildClearCookie();
+    return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, clear.toString()).build();
+  }
+
+  /**
+   * The cookie-based refresh/logout endpoints take NO request body — the refresh token is read from
+   * the {@code atlas_refresh} cookie. Reject only a request carrying an ACTUAL body
+   * ({@code Content-Length > 0}) with 415 (T-048, QG-3); a body-less POST always proceeds to the
+   * cookie auth path, REGARDLESS of any {@code Content-Type} header. (Keying off the Content-Type
+   * header alone wrongly 415'd valid body-less calls — the browser/curl send no Content-Type, but
+   * RestAssured attaches one to body-less POSTs.) Injecting {@link HttpServletRequest} (rather than
+   * a {@code @RequestHeader}) keeps this off the OpenAPI parameter list.
+   */
+  private static void rejectBody(HttpServletRequest request)
+      throws HttpMediaTypeNotSupportedException {
+    if (request.getContentLengthLong() > 0) {
+      throw new HttpMediaTypeNotSupportedException(
+          "This endpoint takes no request body; the refresh token is read from the "
+              + AuthCookieFactory.COOKIE_NAME
+              + " cookie.");
+    }
   }
 
   @GetMapping("/me")

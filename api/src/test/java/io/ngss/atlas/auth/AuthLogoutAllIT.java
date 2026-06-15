@@ -107,8 +107,7 @@ class AuthLogoutAllIT {
   private Response logout(String bearer, String refreshToken) {
     return given()
         .header("Authorization", "Bearer " + bearer)
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"" + refreshToken + "\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, refreshToken)
         .when()
         .post("/api/auth/logout");
   }
@@ -146,20 +145,20 @@ class AuthLogoutAllIT {
     register("bob@example.com", "Bob");
 
     // Alice: three live tokens + a fourth that she individually logs out (already revoked).
-    String r1 = login("alice@example.com").jsonPath().getString("refreshToken");
-    String r2 = login("alice@example.com").jsonPath().getString("refreshToken");
+    String r1 = login("alice@example.com").getCookie(AuthCookieFactory.COOKIE_NAME);
+    String r2 = login("alice@example.com").getCookie(AuthCookieFactory.COOKIE_NAME);
     Response third = login("alice@example.com");
-    String r3 = third.jsonPath().getString("refreshToken");
+    String r3 = third.getCookie(AuthCookieFactory.COOKIE_NAME);
     String aliceAccess = third.jsonPath().getString("accessToken");
 
     Response fourth = login("alice@example.com");
-    String r4 = fourth.jsonPath().getString("refreshToken");
+    String r4 = fourth.getCookie(AuthCookieFactory.COOKIE_NAME);
     logout(fourth.jsonPath().getString("accessToken"), r4).then().statusCode(204);
     String r4RevokedBefore = revokedAt(r4);
     assertThat(r4RevokedBefore).isNotNull();
 
     // Bob has his own live token, which must stay live.
-    String bobRefresh = login("bob@example.com").jsonPath().getString("refreshToken");
+    String bobRefresh = login("bob@example.com").getCookie(AuthCookieFactory.COOKIE_NAME);
 
     logoutAll(aliceAccess).then().statusCode(204);
 
@@ -183,14 +182,13 @@ class AuthLogoutAllIT {
   void afterLogoutAll_refreshWithAnOldToken_returns401() {
     register("alice@example.com", "Alice");
     Response login = login("alice@example.com");
-    String refresh = login.jsonPath().getString("refreshToken");
+    String refresh = login.getCookie(AuthCookieFactory.COOKIE_NAME);
     String access = login.jsonPath().getString("accessToken");
 
     logoutAll(access).then().statusCode(204);
 
     given()
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"" + refresh + "\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, refresh)
         .when()
         .post("/api/auth/refresh")
         .then()
@@ -201,7 +199,7 @@ class AuthLogoutAllIT {
   void logoutAll_isIdempotent_secondCallRevokesNothing_204() {
     register("alice@example.com", "Alice");
     Response login = login("alice@example.com");
-    String refresh = login.jsonPath().getString("refreshToken");
+    String refresh = login.getCookie(AuthCookieFactory.COOKIE_NAME);
     String access = login.jsonPath().getString("accessToken");
 
     logoutAll(access).then().statusCode(204);

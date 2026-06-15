@@ -9,6 +9,7 @@ import io.ngss.atlas.Application;
 import io.ngss.atlas.BaseIT;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import io.restassured.http.Cookie;
 import io.restassured.response.Response;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
@@ -96,11 +97,11 @@ class LogoutIT {
         .response();
   }
 
+  /** T-048: logout reads the refresh token from the cookie + a Bearer access token; no body. */
   private Response logout(String bearer, String refreshToken) {
     return given()
         .header("Authorization", "Bearer " + bearer)
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"" + refreshToken + "\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, refreshToken)
         .when()
         .post("/api/auth/logout");
   }
@@ -110,7 +111,7 @@ class LogoutIT {
     register("alice@example.com", "Alice");
     Response tokens = login("alice@example.com");
     String access = tokens.jsonPath().getString("accessToken");
-    String refresh = tokens.jsonPath().getString("refreshToken");
+    String refresh = tokens.getCookie(AuthCookieFactory.COOKIE_NAME);
 
     logout(access, refresh).then().statusCode(204);
 
@@ -122,8 +123,7 @@ class LogoutIT {
     assertThat(revoked).isNotNull();
 
     given()
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"" + refresh + "\"}")
+        .cookie(AuthCookieFactory.COOKIE_NAME, refresh)
         .when()
         .post("/api/auth/refresh")
         .then()
@@ -135,7 +135,7 @@ class LogoutIT {
     register("alice@example.com", "Alice");
     Response tokens = login("alice@example.com");
     String access = tokens.jsonPath().getString("accessToken");
-    String refresh = tokens.jsonPath().getString("refreshToken");
+    String refresh = tokens.getCookie(AuthCookieFactory.COOKIE_NAME);
     String hash = RefreshTokenService.sha256Hex(refresh);
 
     logout(access, refresh).then().statusCode(204);
@@ -155,7 +155,7 @@ class LogoutIT {
   void crossUserLogoutReturns403AndLeavesRowUnmodified() {
     register("alice@example.com", "Alice");
     register("bob@example.com", "Bob");
-    String aliceRefresh = login("alice@example.com").jsonPath().getString("refreshToken");
+    String aliceRefresh = login("alice@example.com").getCookie(AuthCookieFactory.COOKIE_NAME);
     String bobAccess = login("bob@example.com").jsonPath().getString("accessToken");
 
     logout(bobAccess, aliceRefresh).then().statusCode(403);
@@ -170,20 +170,45 @@ class LogoutIT {
 
   @Test
   void logoutWithoutBearerReturns401() {
-    given()
-        .contentType(ContentType.JSON)
-        .body("{\"refreshToken\":\"whatever\"}")
-        .when()
-        .post("/api/auth/logout")
-        .then()
-        .statusCode(401);
+    // Body-less, no Bearer → the security filter 401s before the controller (auth required).
+    given().when().post("/api/auth/logout").then().statusCode(401);
   }
 
   @Test
-  void logoutWithBlankRefreshTokenReturns400() {
+  void logoutWithoutCookieReturns204AndClearsCookie() {
+    // T-048: an authenticated logout with NO refresh cookie is an idempotent 204 that still
+    // emits a clearing Set-Cookie (Max-Age=0). (Replaces the old blank-body-400 contract.)
     register("alice@example.com", "Alice");
     String access = login("alice@example.com").jsonPath().getString("accessToken");
-    logout(access, "").then().statusCode(400);
+
+    Cookie clear =
+        given()
+            .header("Authorization", "Bearer " + access)
+            .when()
+            .post("/api/auth/logout")
+            .then()
+            .statusCode(204)
+            .extract()
+            .detailedCookie(AuthCookieFactory.COOKIE_NAME);
+    assertThat(clear).as("clearing Set-Cookie present").isNotNull();
+    assertThat(clear.getMaxAge()).as("Max-Age=0 clears the cookie").isZero();
+  }
+
+  @Test
+  void logoutWithJsonBodyReturns415() {
+    // QG-3: the body-less endpoint rejects an erroneous JSON body with 415.
+    register("alice@example.com", "Alice");
+    Response tokens = login("alice@example.com");
+    String access = tokens.jsonPath().getString("accessToken");
+    given()
+        .header("Authorization", "Bearer " + access)
+        .cookie(AuthCookieFactory.COOKIE_NAME, tokens.getCookie(AuthCookieFactory.COOKIE_NAME))
+        .contentType(ContentType.JSON)
+        .body("{\"refreshToken\":\"x\"}")
+        .when()
+        .post("/api/auth/logout")
+        .then()
+        .statusCode(415);
   }
 
   @Test
@@ -192,12 +217,11 @@ class LogoutIT {
     String aliceId =
         jdbc.queryForObject(
             "SELECT id::text FROM users WHERE email = ?", String.class, "alice@example.com");
-    String refresh = login("alice@example.com").jsonPath().getString("refreshToken");
+    String refresh = login("alice@example.com").getCookie(AuthCookieFactory.COOKIE_NAME);
 
     String newAccess =
         given()
-            .contentType(ContentType.JSON)
-            .body("{\"refreshToken\":\"" + refresh + "\"}")
+            .cookie(AuthCookieFactory.COOKIE_NAME, refresh)
             .when()
             .post("/api/auth/refresh")
             .then()

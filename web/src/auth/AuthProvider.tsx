@@ -30,6 +30,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { accessToken, user, setUser, setStatus, clearTokens } = useAuthStore.getState();
 
+    // T-048 (lone-cookie-no-bootstrap, see docs/auth-frontend.md): with no access token in the
+    // store we treat the session as unauthenticated and do NOT speculatively POST /api/auth/refresh
+    // at boot. The refresh cookie is HttpOnly so JS can't detect it; a blind boot-time refresh would
+    // race every reload and, on a logged-out user, add a guaranteed 401. The user re-authenticates
+    // via /login, which sets a fresh cookie.
     if (!accessToken) {
       setStatus('unauthenticated');
       return;

@@ -38,6 +38,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -332,6 +333,15 @@ public class GlobalExceptionHandler {
       HttpMessageNotReadableException ex, HttpServletRequest request) {
     log.info("unreadable request body path={}", request.getRequestURI());
     return build(HttpStatus.BAD_REQUEST, "Malformed request body", request);
+  }
+
+  @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+  public ResponseEntity<ErrorBody> handleUnsupportedMediaType(
+      HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+    // T-048: the body-less cookie auth endpoints (/api/auth/refresh, /logout) reject any request
+    // body with 415 — the refresh token is read from the atlas_refresh cookie, never the body.
+    log.info("unsupported media type path={}", request.getRequestURI());
+    return build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Request body not supported", request);
   }
 
   @ExceptionHandler(MissingServletRequestParameterException.class)

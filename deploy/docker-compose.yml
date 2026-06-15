@@ -96,8 +96,14 @@ services:
     env_file: ["../.env"]
     # .env points SMTP_HOST at localhost (host-side dev); inside the compose network the
     # broker is the `mailhog` service, so override just that key here.
+    #
+    # This is the local-dev stack served over plain http://localhost. .env.example ships
+    # APP_AUTH_COOKIE_SECURE=true (safe prod default), but a Secure cookie will NOT round-trip
+    # over http (curl has no localhost exception), so the atlas_refresh smoke would 401.
+    # Force it non-Secure for this http stack; prod runs over TLS with the .env default.
     environment:
       SMTP_HOST: mailhog
+      APP_AUTH_COOKIE_SECURE: "false"
     healthcheck:
       # /ready performs a DB ping; this gates `docker compose up --wait`
       # on the app actually serving traffic, not just having a PID.

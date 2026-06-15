@@ -27,14 +27,12 @@ export function getRefreshPromise(): Promise<TokenBundle> {
     return inflightRefresh;
   }
   inflightRefresh = (async (): Promise<TokenBundle> => {
-    const refreshToken = useAuthStore.getState().refreshToken;
-    if (!refreshToken) {
-      throw new AuthError('no_refresh_token');
-    }
+    // T-048: body-less POST; the refresh token rides the HttpOnly atlas_refresh cookie.
+    // credentials:'include' makes the browser send (and accept the rotated) cookie. No store
+    // token read, no Content-Type (a body would be 415).
     const res = await nativeFetch('/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
     });
     if (!res.ok) {
       throw new AuthError('refresh_failed');
@@ -54,11 +52,10 @@ export function getRefreshPromise(): Promise<TokenBundle> {
     }
     useAuthStore.getState().setTokens({
       accessToken: parsed.data.accessToken,
-      refreshToken: parsed.data.refreshToken,
       accessTokenExpiresAt,
       user,
     });
-    return { accessToken: parsed.data.accessToken, refreshToken: parsed.data.refreshToken };
+    return { accessToken: parsed.data.accessToken };
   })().finally(() => {
     inflightRefresh = null;
   });

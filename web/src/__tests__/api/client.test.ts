@@ -20,7 +20,11 @@ describe('api client wiring', () => {
   it('resolves the Bearer token from live Zustand state per request', async () => {
     const resolver = OpenAPI.TOKEN;
     expect(typeof resolver).toBe('function');
-    useAuthStore.getState().setTokens('access-1', 'refresh-1');
+    useAuthStore.getState().setTokens({
+      accessToken: 'access-1',
+      accessTokenExpiresAt: Date.now() + 1000,
+      user: { id: 'u', email: 'e@x.com', displayName: 'n' },
+    });
     if (typeof resolver === 'function') {
       await expect(resolver(DUMMY_REQ)).resolves.toBe('access-1');
     }
@@ -43,9 +47,12 @@ describe('api client wiring', () => {
   });
 
   it('default 401 handler clears the tokens', () => {
-    useAuthStore.getState().setTokens('access-2', 'refresh-2');
+    useAuthStore.getState().setTokens({
+      accessToken: 'access-2',
+      accessTokenExpiresAt: Date.now() + 1000,
+      user: { id: 'u', email: 'e@x.com', displayName: 'n' },
+    });
     handleUnauthorized();
     expect(useAuthStore.getState().accessToken).toBeNull();
-    expect(useAuthStore.getState().refreshToken).toBeNull();
   });
 });

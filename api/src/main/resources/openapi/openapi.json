@@ -217,34 +217,32 @@
     "/api/auth/logout" : {
       "post" : {
         "operationId" : "logout",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/LogoutRequest"
-              }
-            }
-          },
-          "required" : true
-        },
+        "parameters" : [ {
+          "in" : "cookie",
+          "name" : "atlas_refresh",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "204" : {
-            "description" : "Logged out"
-          },
-          "400" : {
-            "description" : "Validation error"
+            "description" : "Logged out (cookie cleared; idempotent)"
           },
           "401" : {
             "description" : "Missing or invalid access token"
           },
           "403" : {
             "description" : "Refresh token belongs to another user"
+          },
+          "415" : {
+            "description" : "Unexpected request body (this endpoint is body-less)"
           }
         },
         "security" : [ {
           "bearerAuth" : [ ]
         } ],
-        "summary" : "Revoke the caller's refresh token",
+        "summary" : "Revoke the caller's refresh token (read from the cookie) and clear the cookie",
         "tags" : [ "auth" ]
       }
     },
@@ -301,16 +299,14 @@
     "/api/auth/refresh" : {
       "post" : {
         "operationId" : "refresh",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/RefreshRequest"
-              }
-            }
-          },
-          "required" : true
-        },
+        "parameters" : [ {
+          "in" : "cookie",
+          "name" : "atlas_refresh",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "200" : {
             "content" : {
@@ -322,16 +318,6 @@
             },
             "description" : "Rotated"
           },
-          "400" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/AuthResponse"
-                }
-              }
-            },
-            "description" : "Validation error"
-          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -340,10 +326,20 @@
                 }
               }
             },
-            "description" : "Invalid or expired refresh token"
+            "description" : "Missing, invalid, or expired refresh cookie"
+          },
+          "415" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "Unexpected request body (this endpoint is body-less)"
           }
         },
-        "summary" : "Exchange a refresh token for a fresh access + refresh pair",
+        "summary" : "Exchange the refresh cookie for a fresh access token + a rotated refresh cookie",
         "tags" : [ "auth" ]
       }
     },
@@ -3008,9 +3004,6 @@
           "expiresIn" : {
             "type" : "integer",
             "format" : "int64"
-          },
-          "refreshToken" : {
-            "type" : "string"
           }
         }
       },
@@ -3375,15 +3368,6 @@
           }
         }
       },
-      "LogoutRequest" : {
-        "required" : [ "refreshToken" ],
-        "type" : "object",
-        "properties" : {
-          "refreshToken" : {
-            "type" : "string"
-          }
-        }
-      },
       "MaintenanceResult" : {
         "type" : "object",
         "properties" : {
@@ -3639,15 +3623,6 @@
         "properties" : {
           "features" : {
             "$ref" : "#/components/schemas/FeaturesDto"
-          }
-        }
-      },
-      "RefreshRequest" : {
-        "required" : [ "refreshToken" ],
-        "type" : "object",
-        "properties" : {
-          "refreshToken" : {
-            "type" : "string"
           }
         }
       },

@@ -126,12 +126,11 @@ class AuthLogDisciplineIT {
               .extract()
               .response();
       access1 = loginResp.jsonPath().getString("accessToken");
-      refresh1 = loginResp.jsonPath().getString("refreshToken");
+      refresh1 = loginResp.getCookie(AuthCookieFactory.COOKIE_NAME);
 
       Response refreshResp =
           given()
-              .contentType(ContentType.JSON)
-              .body("{\"refreshToken\":\"" + refresh1 + "\"}")
+              .cookie(AuthCookieFactory.COOKIE_NAME, refresh1)
               .when()
               .post("/api/auth/refresh")
               .then()
@@ -139,7 +138,7 @@ class AuthLogDisciplineIT {
               .extract()
               .response();
       access2 = refreshResp.jsonPath().getString("accessToken");
-      refresh2 = refreshResp.jsonPath().getString("refreshToken");
+      refresh2 = refreshResp.getCookie(AuthCookieFactory.COOKIE_NAME);
 
       given()
           .header("Authorization", "Bearer " + access1)
@@ -150,8 +149,7 @@ class AuthLogDisciplineIT {
 
       given()
           .header("Authorization", "Bearer " + access1)
-          .contentType(ContentType.JSON)
-          .body("{\"refreshToken\":\"" + refresh2 + "\"}")
+          .cookie(AuthCookieFactory.COOKIE_NAME, refresh2)
           .when()
           .post("/api/auth/logout")
           .then()

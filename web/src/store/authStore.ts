@@ -3,34 +3,26 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { AuthStatus, UserProfile } from '../auth/types';
 
 /**
- * T-013 auth store. Extends the T-010 in-memory store: preserves the
- * setTokens(access, refresh) / clearTokens signatures, adds
- * accessTokenExpiresAt + user + status, and persists to localStorage under
- * "atlas.auth.v1" (XSS trade-off documented in docs/security.md).
+ * Auth store (T-013; T-048 cookie cutover). The REFRESH token is no longer kept here — it lives in
+ * the HttpOnly `atlas_refresh` cookie, out of JS reach (XSS-exfiltration hardening, see
+ * docs/security.md). The store persists ONLY the short-lived access token (+ derived expiry) and
+ * the resolved user under "atlas.auth.v1". A persist version bump + {@link migrate} scrubs any
+ * legacy refreshToken left behind in a pre-T-048 blob.
  */
 
-/** Full token bundle including derived expiry + resolved user (login/refresh). */
+/** Token bundle including derived expiry + resolved user (login/refresh). */
 export interface TokenBundleInput {
   accessToken: string;
-  refreshToken: string;
   accessTokenExpiresAt: number;
   user: UserProfile;
 }
 
-interface SetTokens {
-  /** Back-compat two-arg form (T-010). Leaves accessTokenExpiresAt + user untouched. */
-  (accessToken: string, refreshToken: string): void;
-  /** Full form: sets all four fields + status=authenticated. */
-  (tokens: TokenBundleInput): void;
-}
-
 export interface AuthState {
   accessToken: string | null;
-  refreshToken: string | null;
   accessTokenExpiresAt: number | null;
   user: UserProfile | null;
   status: AuthStatus;
-  setTokens: SetTokens;
+  setTokens: (tokens: TokenBundleInput) => void;
   clearTokens: () => void;
   setUser: (user: UserProfile) => void;
   setStatus: (status: AuthStatus) => void;
@@ -38,37 +30,28 @@ export interface AuthState {
 
 export const AUTH_STORAGE_KEY = 'atlas.auth.v1';
 
+/** Persist schema version — bumped to 2 by T-048 so {@link migrate} scrubs the legacy refreshToken. */
+export const AUTH_PERSIST_VERSION = 2;
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       accessToken: null,
-      refreshToken: null,
       accessTokenExpiresAt: null,
       user: null,
       // Start in 'authenticating' so the first render does not flash to /login
       // before AuthProvider / rehydration resolves the real status.
       status: 'authenticating',
-      setTokens: ((
-        accessOrTokens: string | TokenBundleInput,
-        refreshToken?: string
-      ): void => {
-        if (typeof accessOrTokens === 'string') {
-          // Two-arg back-compat: only the two tokens change.
-          set({ accessToken: accessOrTokens, refreshToken: refreshToken ?? null });
-        } else {
-          set({
-            accessToken: accessOrTokens.accessToken,
-            refreshToken: accessOrTokens.refreshToken,
-            accessTokenExpiresAt: accessOrTokens.accessTokenExpiresAt,
-            user: accessOrTokens.user,
-            status: 'authenticated',
-          });
-        }
-      }) as SetTokens,
+      setTokens: (tokens) =>
+        set({
+          accessToken: tokens.accessToken,
+          accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+          user: tokens.user,
+          status: 'authenticated',
+        }),
       clearTokens: () =>
         set({
           accessToken: null,
-          refreshToken: null,
           accessTokenExpiresAt: null,
           user: null,
           status: 'unauthenticated',
@@ -78,10 +61,17 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: AUTH_STORAGE_KEY,
+      version: AUTH_PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
+      // T-048: scrub a legacy refreshToken from any pre-version-2 persisted blob so the long-lived
+      // credential never lingers in localStorage after the cookie cutover.
+      migrate: (persistedState) => {
+        const state = (persistedState ?? {}) as Record<string, unknown>;
+        delete state.refreshToken;
+        return state as unknown as AuthState;
+      },
       partialize: (state) => ({
         accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         accessTokenExpiresAt: state.accessTokenExpiresAt,
         user: state.user,
       }),
@@ -100,9 +90,10 @@ export const useAuthStore = create<AuthState>()(
 );
 
 /**
- * Cross-tab logout: when another tab clears or rewrites the persisted blob
- * without a refreshToken, mirror the logout here. Exported so tests can add /
- * remove it deterministically (avoids cross-test listener leakage).
+ * Cross-tab logout: when another tab clears or rewrites the persisted blob to a logged-out state,
+ * mirror the logout here. T-048: keyed on accessToken/user becoming absent (the refresh token is no
+ * longer in the blob — the old refreshToken key would never fire again). Exported so tests can
+ * add/remove it deterministically (avoids cross-test listener leakage).
  */
 export function handleAuthStorageEvent(event: StorageEvent): void {
   if (event.key !== AUTH_STORAGE_KEY) {
@@ -113,8 +104,10 @@ export function handleAuthStorageEvent(event: StorageEvent): void {
     return;
   }
   try {
-    const parsed = JSON.parse(event.newValue) as { state?: { refreshToken?: string | null } };
-    if (!parsed?.state?.refreshToken) {
+    const parsed = JSON.parse(event.newValue) as {
+      state?: { accessToken?: string | null; user?: unknown };
+    };
+    if (!parsed?.state?.accessToken || !parsed?.state?.user) {
       useAuthStore.getState().clearTokens();
     }
   } catch {
