@@ -75,7 +75,8 @@ describe('CommentsSection', () => {
     renderSection();
     const items = await screen.findAllByTestId('comment-item');
     expect(items).toHaveLength(3);
-    expect(items[0]).toHaveTextContent('mine newest'); // server newest-first preserved
+    // The body now renders via the lazy read-only renderer (T-046), so await it.
+    await waitFor(() => expect(items[0]).toHaveTextContent('mine newest')); // newest-first preserved
     expect(items[1]).toHaveTextContent('[deleted]');
   });
 
