@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiErrorStatus } from '@/api/errors';
 import {
@@ -31,15 +31,26 @@ export function useTicketDetail(idOrKey: string) {
   });
 }
 
+/** Page size for the ticket activity feed (T-045 load-more). */
+const ACTIVITY_PAGE_SIZE = 20;
+
 /**
- * Fetch a ticket's activity (pinned to page 0, size 20 — no pagination UI yet).
+ * Fetch a ticket's activity as a load-more (infinite) query (T-045). Pages are
+ * fetched in order (0, 1, …) and accumulated; {@link getNextPageParam} returns
+ * the next page index only while the loaded rows are fewer than the server's
+ * total, so the caller can hide the "load more" control once everything is in.
  * Keyed by the route identifier but fetched by the resolved ticket UUID, so it
  * only runs once the detail query has produced an id.
  */
 export function useTicketActivity(idOrKey: string, ticketId: string | undefined) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ticketKeys.activity(idOrKey),
-    queryFn: () => listTicketActivity(ticketId!, 0, 20),
+    queryFn: ({ pageParam }) => listTicketActivity(ticketId!, pageParam, ACTIVITY_PAGE_SIZE),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded < lastPage.total ? allPages.length : undefined;
+    },
     enabled: !!ticketId,
   });
 }

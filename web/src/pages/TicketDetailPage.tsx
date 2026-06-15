@@ -7,9 +7,9 @@ import { listLabels, ticketKeys } from '@/api/tickets';
 import { Button } from '@/components/ui/button';
 import { AttachmentsSection } from '@/features/attachments/AttachmentsSection';
 import { LinksSection } from '@/features/links/LinksSection';
+import { ActivitySection } from '@/features/tickets/ActivitySection';
 import { CommentsSection } from '@/features/tickets/CommentsSection';
-import { useTicketActivity, useTicketDetail } from '@/features/tickets/hooks';
-import { TicketActivityTimeline } from '@/features/tickets/TicketActivityTimeline';
+import { useTicketDetail } from '@/features/tickets/hooks';
 import { TicketDescription } from '@/features/tickets/TicketDescription';
 import { TicketHeader } from '@/features/tickets/TicketHeader';
 import { TicketSidebar } from '@/features/tickets/TicketSidebar';
@@ -41,7 +41,6 @@ export default function TicketDetailPage() {
     queryFn: () => listLabels(projectId!),
     enabled: !!projectId,
   });
-  const activityQuery = useTicketActivity(key, ticket?.id);
 
   const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]);
   const labels = labelsQuery.data ?? [];
@@ -111,7 +110,7 @@ export default function TicketDetailPage() {
             projectId={ticket.projectId}
             projectKey={projectIdOrKey}
           />
-          <TicketActivityTimeline events={activityQuery.data ?? []} members={members} />
+          <ActivitySection idOrKey={key} ticketId={ticket.id} members={members} />
         </div>
         <TicketSidebar idOrKey={key} ticket={ticket} members={members} labels={labels} />
       </div>

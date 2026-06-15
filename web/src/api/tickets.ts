@@ -275,14 +275,33 @@ export async function unassignTicket(ticketId: string): Promise<Ticket> {
 export const _unassignTicketProbe: typeof TicketsService.unassignTicket =
   TicketsService.unassignTicket;
 
-/** List a ticket's activity (newest first). Takes the ticket UUID; pinned page/size. */
+/** A page of a ticket's activity (newest first), mirroring {@link CommentPage}. */
+export interface ActivityPage {
+  items: ActivityEvent[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+/**
+ * List one page of a ticket's activity (newest first). Takes the ticket UUID.
+ * Returns the full paged envelope — {@link ActivityPage.total} drives the detail
+ * page's "load more" (T-045): the control hides once the accumulated rows reach
+ * the total. The backend orders rows created_at DESC, so sequential pages do not
+ * overlap and accumulation never duplicates a row.
+ */
 export async function listTicketActivity(
   ticketId: string,
   page = 0,
   size = 20
-): Promise<ActivityEvent[]> {
+): Promise<ActivityPage> {
   const res = await ActivityService.listTicketActivity(ticketId, page, size);
-  return (res.items ?? []).map(toActivityEvent);
+  return {
+    items: (res.items ?? []).map(toActivityEvent),
+    page: res.page ?? page,
+    size: res.size ?? size,
+    total: res.total ?? 0,
+  };
 }
 
 /* ───────────────────────── T-022: comments ───────────────────────── */
