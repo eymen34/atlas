@@ -12,6 +12,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -29,27 +31,36 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RefreshTokenService {
 
+  private static final Logger log = LoggerFactory.getLogger(RefreshTokenService.class);
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
   private static final int RAW_TOKEN_BYTES = 32;
 
   private final RefreshTokenRepository repo;
   private final Clock clock;
   private final long refreshTtlDays;
+  private final TokenTheftRevocationHelper theftRevocationHelper;
 
   /** Token pair carried back from {@link #rotate}. */
   public record RotateResult(UUID userId, String newRaw) {}
 
   @Autowired
   public RefreshTokenService(
-      RefreshTokenRepository repo, @Value("${REFRESH_TOKEN_TTL_DAYS:30}") long refreshTtlDays) {
-    this(repo, Clock.systemUTC(), refreshTtlDays);
+      RefreshTokenRepository repo,
+      @Value("${REFRESH_TOKEN_TTL_DAYS:30}") long refreshTtlDays,
+      TokenTheftRevocationHelper theftRevocationHelper) {
+    this(repo, Clock.systemUTC(), refreshTtlDays, theftRevocationHelper);
   }
 
   // Package-private: tests inject a fixed Clock.
-  RefreshTokenService(RefreshTokenRepository repo, Clock clock, long refreshTtlDays) {
+  RefreshTokenService(
+      RefreshTokenRepository repo,
+      Clock clock,
+      long refreshTtlDays,
+      TokenTheftRevocationHelper theftRevocationHelper) {
     this.repo = repo;
     this.clock = clock;
     this.refreshTtlDays = refreshTtlDays;
+    this.theftRevocationHelper = theftRevocationHelper;
   }
 
   @Transactional
@@ -67,7 +78,32 @@ public class RefreshTokenService {
     RefreshToken current =
         repo.findByTokenHash(sha256Hex(rawToken)).orElseThrow(InvalidCredentialsException::new);
     if (current.getRevokedAt() != null) {
-      // Reuse / replay of an already-rotated (or logged-out) token.
+      if (current.getReplacedById() != null) {
+        // Rotated-token replay is a theft signal (RFC 9700 / OAuth2 BCP): the legitimate client
+        // discards the old raw token on rotation, so a replay means a second party kept a copy.
+        // Revoke ALL of this user's live tokens (user-scoped, T-032 revokeAllLive). The WARN fires
+        // BEFORE the attempt so the security event is recorded even if the DB write fails. The
+        // revoke must COMMIT independently of this @Transactional rotate() (about to roll back on
+        // the throw), so it runs in a REQUIRES_NEW proxy bean — never a direct repo call in this
+        // transaction (jpa_rollback_only_trap, T-022).
+        log.warn(
+            "refresh-token reuse detected for user={}; revoking all live tokens",
+            current.getUserId());
+        Instant detectedAt = Instant.now(clock);
+        try {
+          theftRevocationHelper.revokeAllLive(current.getUserId(), detectedAt);
+          log.warn(
+              "refresh-token reuse for user={}: all live tokens successfully revoked",
+              current.getUserId());
+        } catch (Exception ex) {
+          log.error(
+              "refresh-token reuse for user={}: revokeAllLive failed — partial security state",
+              current.getUserId(),
+              ex);
+        }
+      }
+      // Always 401, regardless of revocation outcome. A revoked-but-never-rotated token
+      // (replacedById == null, e.g. an explicit logout) is NOT a theft signal: plain 401.
       throw new InvalidCredentialsException();
     }
     Instant now = Instant.now(clock);
