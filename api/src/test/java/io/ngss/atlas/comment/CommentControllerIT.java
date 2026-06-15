@@ -246,6 +246,64 @@ class CommentControllerIT {
     assertThat(edited).isEqualTo(1);
   }
 
+  // T-042: a no-op edit writes NO COMMENT_EDITED row and does not bump updated_at.
+  @Test
+  void update_withIdenticalBody_writesNoCommentEdited_andLeavesUpdatedAtUnchanged() {
+    String id = createComment(tokenAlice, ticketId, "<p>same</p>");
+    Instant before =
+        jdbc.queryForObject("SELECT updated_at FROM comments WHERE id=?::uuid", Instant.class, id);
+
+    given()
+        .header("Authorization", "Bearer " + tokenAlice)
+        .contentType(ContentType.JSON)
+        .body("{\"body\":\"<p>same</p>\"}")
+        .patch("/api/comments/" + id)
+        .then()
+        .statusCode(200)
+        .body("body", equalTo("<p>same</p>"));
+
+    Integer edited =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM activity_events WHERE ticket_id=?::uuid AND event_type='COMMENT_EDITED'",
+            Integer.class,
+            ticketId);
+    assertThat(edited).as("no COMMENT_EDITED for a byte-identical edit").isZero();
+
+    Instant after =
+        jdbc.queryForObject("SELECT updated_at FROM comments WHERE id=?::uuid", Instant.class, id);
+    assertThat(after).as("updated_at not bumped on a no-op").isEqualTo(before);
+  }
+
+  // T-042: a genuine change still writes exactly one COMMENT_EDITED and bumps updated_at.
+  @Test
+  void update_withRealChange_writesExactlyOneCommentEdited_andBumpsUpdatedAt()
+      throws InterruptedException {
+    String id = createComment(tokenAlice, ticketId, "<p>plain</p>");
+    Instant before =
+        jdbc.queryForObject("SELECT updated_at FROM comments WHERE id=?::uuid", Instant.class, id);
+    Thread.sleep(10); // make a later instant observable
+
+    given()
+        .header("Authorization", "Bearer " + tokenAlice)
+        .contentType(ContentType.JSON)
+        .body("{\"body\":\"<p>changed</p>\"}")
+        .patch("/api/comments/" + id)
+        .then()
+        .statusCode(200)
+        .body("body", equalTo("<p>changed</p>"));
+
+    Integer edited =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM activity_events WHERE ticket_id=?::uuid AND event_type='COMMENT_EDITED'",
+            Integer.class,
+            ticketId);
+    assertThat(edited).as("exactly one COMMENT_EDITED for a real edit").isEqualTo(1);
+
+    Instant after =
+        jdbc.queryForObject("SELECT updated_at FROM comments WHERE id=?::uuid", Instant.class, id);
+    assertThat(after).as("updated_at bumped on a real edit").isAfter(before);
+  }
+
   @Test
   void update_byNonAuthorNonAdmin_returns403_andBodyUnchanged() {
     String id = createComment(tokenBob, ticketId, "<p>bobs comment</p>");

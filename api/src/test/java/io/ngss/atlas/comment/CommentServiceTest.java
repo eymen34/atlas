@@ -8,6 +8,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import io.ngss.atlas.activity.ActivityEventWriter;
@@ -27,6 +28,7 @@ import io.ngss.atlas.project.ForbiddenProjectAccessException;
 import io.ngss.atlas.security.ProjectAccessGuard;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -155,6 +157,48 @@ class CommentServiceTest {
     assertThat(payloadCaptor.getValue())
         .isInstanceOfSatisfying(
             CommentEditedPayload.class, p -> assertThat(p.commentId()).isEqualTo(commentId));
+  }
+
+  // ───────────────────────── T-042: no-op edit suppression ─────────────────────────
+
+  @Test
+  void isMeaningfullyChanged_isTrimOnly_andBiasesTowardChanged() {
+    // Identical, or differing only by leading/trailing whitespace → NOT a change.
+    assertThat(CommentService.isMeaningfullyChanged("<p>hi</p>", "<p>hi</p>")).isFalse();
+    assertThat(CommentService.isMeaningfullyChanged("<p>hi</p>", "  <p>hi</p>  ")).isFalse();
+    assertThat(CommentService.isMeaningfullyChanged("hi", "  hi  ")).isFalse();
+    // Any INTERNAL difference is a real edit — do NOT over-normalize (never drop a real change).
+    assertThat(CommentService.isMeaningfullyChanged("<p>hi</p>", "<p>hi </p>")).isTrue();
+    assertThat(CommentService.isMeaningfullyChanged("<p>a b</p>", "<p>a  b</p>")).isTrue();
+    assertThat(CommentService.isMeaningfullyChanged("<p>hi</p>", "<p>HI</p>")).isTrue();
+    // Null/empty edges: both-null and ""/whitespace collapse to no-op; null vs "" is a CHANGE
+    // (trim-only, NOT blank-to-null — bias toward changed).
+    assertThat(CommentService.isMeaningfullyChanged(null, null)).isFalse();
+    assertThat(CommentService.isMeaningfullyChanged("", "   ")).isFalse();
+    assertThat(CommentService.isMeaningfullyChanged(null, "")).isTrue();
+  }
+
+  @Test
+  void update_withWhitespaceOnlyChange_isNoOp_writesNoActivity_andDoesNotBumpOrChurn() {
+    UUID commentId = UUID.randomUUID();
+    Comment comment = liveComment(commentId, CALLER);
+    when(comment.getBody()).thenReturn("<p>same</p>");
+    Ticket ticket = ticketInProject();
+    when(commentRepository.findByIdAndDeletedAtIsNull(commentId)).thenReturn(Optional.of(comment));
+    when(ticketRepository.findById(TICKET)).thenReturn(Optional.of(ticket));
+    when(commentMentionRepository.findUserIdsByCommentId(commentId)).thenReturn(List.of(ALICE));
+
+    // Differs only by leading/trailing whitespace → a no-op.
+    CommentResponse response =
+        service.update(commentId, new UpdateCommentRequest("  <p>same</p>  "), CALLER);
+
+    verify(comment, never()).editBody(any(), any()); // no updated_at bump
+    verify(commentRepository, never()).save(any()); // nothing persisted
+    verify(commentMentionRepository, never()).deleteByCommentId(any()); // no mention churn
+    verify(activityWriter, never()).record(any(), any(), any(), any(), any()); // no COMMENT_EDITED
+    verifyNoInteractions(mentionParser); // body not re-parsed
+    // Response carries the unchanged comment + its existing mentions.
+    assertThat(response.mentionedUserIds()).containsExactly(ALICE);
   }
 
   @Test

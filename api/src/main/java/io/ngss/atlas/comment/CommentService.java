@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -151,6 +152,15 @@ public class CommentService {
     guard.requireMember(ticket.getProjectId());
     requireAuthorOrAdmin(comment, callerId, ticket.getProjectId());
 
+    // T-042: a no-op edit (body unchanged after trim) writes NO COMMENT_EDITED row and does NOT
+    // bump updated_at — skip the whole mutation (also no mention churn). Returns 200 with the
+    // unchanged comment + its current mentions. Conservative: only leading/trailing whitespace is
+    // normalized, so any INTERNAL difference is a real edit (never silently drop a real change).
+    if (!isMeaningfullyChanged(comment.getBody(), req.body())) {
+      return CommentResponse.from(
+          comment, List.copyOf(commentMentionRepository.findUserIdsByCommentId(commentId)));
+    }
+
     Instant now = Instant.now();
     comment.editBody(req.body(), now);
     commentRepository.save(comment);
@@ -225,6 +235,20 @@ public class CommentService {
     if (!comment.getAuthorId().equals(callerId) && !guard.isAdmin(projectId)) {
       throw new ForbiddenProjectAccessException(projectId);
     }
+  }
+
+  /**
+   * True when an edit changes the body meaningfully (T-042). CONSERVATIVE normalization: only
+   * leading/trailing whitespace is stripped — any INTERNAL difference (including whitespace inside
+   * the TipTap HTML, e.g. {@code <p>hi</p>} vs {@code <p>hi </p>}) is a real edit. Bias toward
+   * "changed": a dropped real edit is worse than a little feed noise. Null-safe.
+   */
+  static boolean isMeaningfullyChanged(String oldBody, String newBody) {
+    return !Objects.equals(stripOrNull(oldBody), stripOrNull(newBody));
+  }
+
+  private static String stripOrNull(String s) {
+    return s == null ? null : s.strip();
   }
 
   private Ticket loadTicket(UUID ticketId) {
