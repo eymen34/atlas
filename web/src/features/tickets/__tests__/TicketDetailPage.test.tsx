@@ -79,7 +79,7 @@ beforeEach(() => {
   updateTicketMock.mockReset().mockResolvedValue(TICKET_PROJ_1_UPDATED);
   unassignTicketMock.mockReset().mockResolvedValue({ ...TICKET_PROJ_1, assigneeId: undefined });
   transitionTicketMock.mockReset().mockResolvedValue({ ...TICKET_PROJ_1, status: 'IN_PROGRESS' });
-  listActivityMock.mockReset().mockResolvedValue([]);
+  listActivityMock.mockReset().mockResolvedValue({ items: [], page: 0, size: 20, total: 0 });
   listMembersMock.mockReset().mockResolvedValue(MEMBERS_TWO);
   listLabelsMock.mockReset().mockResolvedValue(LABELS_TWO);
   vi.mocked(toast.error).mockClear();
