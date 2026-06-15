@@ -14,6 +14,7 @@ import io.ngss.atlas.domain.User;
 import io.ngss.atlas.domain.UserRepository;
 import io.ngss.atlas.security.CurrentUser;
 import io.ngss.atlas.security.JwtIssuer;
+import io.ngss.atlas.security.LoginAttemptService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,6 +22,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import java.util.UUID;
@@ -58,6 +60,7 @@ public class AuthController {
   private final UserRepository userRepository;
   private final PasswordCredentialRepository passwordCredentialRepository;
   private final PasswordEncoder passwordEncoder;
+  private final LoginAttemptService loginAttemptService;
 
   public AuthController(
       RegistrationService registrationService,
@@ -65,13 +68,15 @@ public class AuthController {
       RefreshTokenService refreshTokenService,
       UserRepository userRepository,
       PasswordCredentialRepository passwordCredentialRepository,
-      PasswordEncoder passwordEncoder) {
+      PasswordEncoder passwordEncoder,
+      LoginAttemptService loginAttemptService) {
     this.registrationService = registrationService;
     this.jwtIssuer = jwtIssuer;
     this.refreshTokenService = refreshTokenService;
     this.userRepository = userRepository;
     this.passwordCredentialRepository = passwordCredentialRepository;
     this.passwordEncoder = passwordEncoder;
+    this.loginAttemptService = loginAttemptService;
   }
 
   @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -96,14 +101,24 @@ public class AuthController {
         description = "Authenticated",
         content = @Content(schema = @Schema(implementation = AuthResponse.class))),
     @ApiResponse(responseCode = "400", description = "Validation error"),
-    @ApiResponse(responseCode = "401", description = "Invalid credentials")
+    @ApiResponse(responseCode = "401", description = "Invalid credentials"),
+    @ApiResponse(
+        responseCode = "429",
+        description = "Too Many Requests — account or IP locked due to repeated failed attempts")
   })
-  public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest req) {
-    String email = req.email().toLowerCase(Locale.ROOT);
+  public ResponseEntity<AuthResponse> login(
+      @Valid @RequestBody LoginRequest req, HttpServletRequest request) {
+    String email = req.email().trim().toLowerCase(Locale.ROOT);
+    String clientIp = loginAttemptService.extractClientIp(request);
+    // T-033: throttle BEFORE any user lookup / credential check — a correct password during an
+    // active lockout still 429s (D4), and unknown emails throttle identically (anti-enumeration).
+    loginAttemptService.checkThrottle(email, clientIp);
+
     User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
     if (user == null) {
       // Timing equalization: spend a BCrypt comparison even for unknown emails.
       passwordEncoder.matches(req.password(), DUMMY_BCRYPT_HASH);
+      loginAttemptService.recordFailure(email, clientIp);
       throw new InvalidCredentialsException();
     }
     PasswordCredential credential =
@@ -111,8 +126,11 @@ public class AuthController {
             .findById(user.getId())
             .orElseThrow(InvalidCredentialsException::new);
     if (!passwordEncoder.matches(req.password(), credential.getBcryptHash())) {
+      loginAttemptService.recordFailure(email, clientIp);
       throw new InvalidCredentialsException();
     }
+    // Success clears the account bucket; the IP bucket is intentionally retained (EC-1).
+    loginAttemptService.clearAccountBucket(email);
     String accessToken = jwtIssuer.issue(user.getId());
     String refreshToken = refreshTokenService.issue(user.getId());
     return ResponseEntity.ok(

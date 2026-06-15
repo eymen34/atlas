@@ -23,10 +23,13 @@ import io.ngss.atlas.project.MemberNotFoundException;
 import io.ngss.atlas.project.ProjectNotFoundException;
 import io.ngss.atlas.project.ProjectValidationException;
 import io.ngss.atlas.project.UserNotFoundException;
+import io.ngss.atlas.security.TooManyLoginAttemptsException;
 import io.ngss.atlas.ticket.InvalidQueryParamException;
 import io.ngss.atlas.ticket.TicketNotFoundException;
 import io.ngss.atlas.ticket.TicketValidationException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -96,6 +99,23 @@ public class GlobalExceptionHandler {
     // credentials" and the path is the same.
     log.info("authentication failure path={}", request.getRequestURI());
     return build(HttpStatus.UNAUTHORIZED, "Invalid credentials", request);
+  }
+
+  @ExceptionHandler(TooManyLoginAttemptsException.class)
+  public ResponseEntity<ErrorBody> handleTooManyLoginAttempts(
+      TooManyLoginAttemptsException ex, HttpServletRequest request) {
+    // T-033 brute-force throttle → 429 with a Retry-After header (>= 1s). Built directly (not via
+    // build()) because the canonical helper attaches no headers; the body still matches api_style.
+    long retryAfter = Math.max(1L, ChronoUnit.SECONDS.between(Instant.now(), ex.getLockedUntil()));
+    log.info("login throttled (429) path={}", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", String.valueOf(retryAfter))
+        .body(
+            new ErrorBody(
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()));
   }
 
   @ExceptionHandler(ForbiddenTokenAccessException.class)

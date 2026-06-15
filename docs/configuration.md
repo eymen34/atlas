@@ -48,6 +48,17 @@ handed to the browser (must be client-resolvable). In prod they often point to t
 | `JWT_ACCESS_TTL_SECONDS` | int | `900` | no | no | all |
 | `REFRESH_TOKEN_TTL_DAYS` | int | `30` | no | no | all |
 | `BCRYPT_COST` | int | `12` | no | no | all |
+| `LOGIN_MAX_ATTEMPTS` | int | `5` | no | no | all |
+| `LOGIN_LOCKOUT_WINDOW_MINUTES` | int | `15` | no | no | all |
+| `LOGIN_IP_MAX_ATTEMPTS` | int | `20` | no | no | all |
+| `LOGIN_TRUSTED_PROXY_CIDRS` | CSV of CIDRs | _(empty)_ | no | no | all |
+
+Login brute-force throttle (T-033): after `LOGIN_MAX_ATTEMPTS` failed logins for an email within
+`LOGIN_LOCKOUT_WINDOW_MINUTES`, that email returns **429** until the window elapses;
+`LOGIN_IP_MAX_ATTEMPTS` is a separate per-IP cap across all emails from one source. The lockout
+duration equals the window. `LOGIN_TRUSTED_PROXY_CIDRS` is **empty by default**, which means
+`X-Forwarded-For` is never trusted — see [`docs/security.md`](./security.md#login-brute-force-protection-t-033)
+for the XFF-spoofing caveat.
 
 ## Application — SMTP (email via the outbox)
 
