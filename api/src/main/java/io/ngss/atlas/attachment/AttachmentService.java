@@ -8,6 +8,7 @@ import io.ngss.atlas.attachment.dto.DownloadUrlResponse;
 import io.ngss.atlas.attachment.dto.FinalizeResponse;
 import io.ngss.atlas.attachment.dto.InitUploadRequest;
 import io.ngss.atlas.attachment.dto.InitUploadResponse;
+import io.ngss.atlas.config.FeatureFlags;
 import io.ngss.atlas.domain.ActivityEventType;
 import io.ngss.atlas.domain.Attachment;
 import io.ngss.atlas.domain.AttachmentStatus;
@@ -26,7 +27,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -82,7 +82,7 @@ public class AttachmentService {
   private final ProjectAccessGuard guard;
   private final ActivityEventWriter activityWriter;
   private final ObjectStorageProperties props;
-  private final ApplicationEventPublisher eventPublisher;
+  private final FeatureFlags featureFlags;
   private final OutboxRepository outboxRepository;
   private final ObjectMapper objectMapper;
   private final S3Client s3Client;
@@ -94,7 +94,7 @@ public class AttachmentService {
       ProjectAccessGuard guard,
       ActivityEventWriter activityWriter,
       ObjectStorageProperties props,
-      ApplicationEventPublisher eventPublisher,
+      FeatureFlags featureFlags,
       OutboxRepository outboxRepository,
       ObjectMapper objectMapper,
       @Lazy S3Client s3Client,
@@ -104,7 +104,7 @@ public class AttachmentService {
     this.guard = guard;
     this.activityWriter = activityWriter;
     this.props = props;
-    this.eventPublisher = eventPublisher;
+    this.featureFlags = featureFlags;
     this.outboxRepository = outboxRepository;
     this.objectMapper = objectMapper;
     this.s3Client = s3Client;
@@ -191,14 +191,18 @@ public class AttachmentService {
         ActivityEventType.ATTACHMENT_ADDED,
         new AttachmentAddedPayload(attachment.getId()),
         now);
-    // T-025: kick the AFTER_COMMIT thumbnail worker (image/* only; loss-tolerant).
-    eventPublisher.publishEvent(
-        new AttachmentFinalizedEvent(
-            attachment.getId(),
-            attachment.getTicketId(),
-            attachment.getObjectKey(),
-            attachment.getContentType(),
-            now));
+    // T-040: enqueue thumbnail generation in the SAME finalize transaction (transactional outbox),
+    // replacing the old AFTER_COMMIT AttachmentThumbnailListener. image/* only; the drain handler
+    // generates the JPEG with retry/backoff. Flag OFF → clean no-op (zero rows). The payload is the
+    // attachment id alone (the handler re-loads to read object_key) — same enqueue API as the
+    // ATTACHMENT_DELETE_OBJECT path. The idempotent already-READY early return above prevents a
+    // double-enqueue on a retried finalize.
+    if (featureFlags.inlineThumbnailsEnabled()
+        && attachment.getContentType().toLowerCase(Locale.ROOT).startsWith("image/")) {
+      outboxRepository.enqueue(
+          OutboxKind.ATTACHMENT_THUMBNAIL,
+          objectMapper.valueToTree(AttachmentThumbnailPayload.of(attachment.getId())));
+    }
     return FinalizeResponse.ready();
   }
 
