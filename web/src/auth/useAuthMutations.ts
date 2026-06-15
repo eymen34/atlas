@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router';
 import { nativeFetch } from '../api/nativeFetch';
 import { useAuthStore } from '../store/authStore';
@@ -99,6 +99,7 @@ export function useRegister() {
 
 export function useLogout() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: async () => {
       // T-048: body-less POST; the refresh token rides the HttpOnly cookie (credentials:'include'
@@ -132,6 +133,11 @@ export function useLogout() {
     // ALWAYS clear + redirect, whether the server call succeeded or not.
     onSettled: () => {
       useAuthStore.getState().clearTokens();
+      // T-061 (F-8): drop the entire TanStack Query cache so the next user can't see a flash of
+      // the previous user's data/nav before refetch. clear() removes all cached + pending queries
+      // atomically; the immediate navigate() unmounts the protected tree before any refetch fires.
+      // Backend still enforces authz — this closes the UI-bleed window only.
+      queryClient.clear();
       navigate('/login', { replace: true });
     },
   });
