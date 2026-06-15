@@ -150,6 +150,20 @@ public class AuthController {
     return ResponseEntity.noContent().build();
   }
 
+  @PostMapping("/logout-all")
+  @SecurityRequirement(name = "bearerAuth")
+  @Operation(
+      operationId = "logoutAll",
+      summary = "Revoke ALL of the caller's live refresh tokens (log out everywhere)")
+  @ApiResponses({
+    @ApiResponse(responseCode = "204", description = "All live refresh tokens revoked (idempotent)"),
+    @ApiResponse(responseCode = "401", description = "Missing or invalid access token")
+  })
+  public ResponseEntity<Void> logoutAll() {
+    refreshTokenService.logoutAll(currentUserId());
+    return ResponseEntity.noContent().build();
+  }
+
   @GetMapping("/me")
   @SecurityRequirement(name = "bearerAuth")
   // Explicit operationId so springdoc names the generated client method getMe()

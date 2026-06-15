@@ -24,6 +24,18 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
       "update RefreshToken t set t.revokedAt = :now where t.id = :id and t.revokedAt is null")
   int markRevokedIfLive(@Param("id") UUID id, @Param("now") Instant now);
 
+  /**
+   * Mass-revoke every LIVE refresh token of one user (T-032 "log out everywhere"). The
+   * {@code revokedAt is null} guard leaves already-revoked rows untouched, so a repeat call
+   * affects 0 rows (idempotent). Returns the number of rows revoked. The V2 partial index
+   * {@code refresh_tokens_user_live_idx} (user_id WHERE revoked_at IS NULL) covers the predicate.
+   */
+  @Modifying
+  @Transactional
+  @Query(
+      "update RefreshToken t set t.revokedAt = :now where t.userId = :uid and t.revokedAt is null")
+  int revokeAllLive(@Param("uid") UUID uid, @Param("now") Instant now);
+
   @Modifying
   @Transactional
   @Query("update RefreshToken t set t.replacedById = :newId where t.id = :oldId")
