@@ -1,129 +1,104 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1.7
 #
-# Atlas — production container image.
+# Atlas — production container image (T-036: jlink custom runtime + AppCDS).
 #
-# Single Spring Boot jar; built in four explicit, auditable stages:
-#   1. web-build  — npm-build the Vite/React frontend
-#   2. api-build  — Maven-build the Spring Boot 4 fat jar (with AOT)
-#   3. cds        — warm an AppCDS shared-class archive for cold-start
-#   4. runtime    — minimal JRE image that runs the jar with -XX:SharedArchiveFile
+# Six stages:
+#   1. web-build — npm-build the Vite/React frontend (→ /web/dist)
+#   2. build     — Maven-build the Spring Boot 4 fat jar (frontend baked into static/)
+#   3. layers    — explode the executable fat jar (JDK `jar -xf`) into a runnable tree
+#   4. jlink     — build a minimal custom JRE (/opt/jre) tailored to the app's modules
+#   5. appcds    — warm the AppCDS archive ON the jlink JRE (so -Xshare:on strict works)
+#   6. runtime   — debian-slim + the jlink JRE + exploded app + app.jsa
 #
-# `# syntax=docker/dockerfile:1.4` (above) enables BuildKit features (cache
-# mounts, etc.) and MUST stay on the first line. The build also requires
-# BuildKit to be enabled (DOCKER_BUILDKIT=1 or `docker buildx build ...`);
-# the docker-build CI job uses `docker buildx build`.
+# AppCDS-on-jlink invariant: stages 5 and 6 each pull the SAME jlink-built /opt/jre — the
+# archive is dumped and consumed on the byte-identical custom JRE, so -Xshare:on (strict)
+# maps it instead of silently falling back. See docs/jlink-runtime.md.
 
-# === STAGE 1: web-build — compile the Vite frontend and emit /web/dist ===
-#
-# Rationale: the production artifact is a single Spring Boot jar; the
-# compiled frontend bundle is copied into /api/src/main/resources/static/
-# by stage 2 so Boot serves it directly. Running `npm ci` here (separate
-# layer from `npm run build`) keeps the dependency-install layer cacheable
-# across PRs that touch source but not package-lock.json.
+# Global ARG (re-declared bare in the jlink + runtime stages so both see this same default —
+# Docker ARGs do not cross stages otherwise; the runtime LABEL would be empty without this).
+ARG ADD_MODULES="java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.httpserver,jdk.localedata,jdk.management,jdk.management.agent,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.zipfs,jdk.charsets"
+
+# === STAGE 1: web-build — compile the Vite frontend → /web/dist ===
+# The production artifact is a single Spring Boot jar; the compiled bundle is copied
+# into api/src/main/resources/static/ by stage 2 so Boot serves the UI directly.
 FROM node:22-alpine AS web-build
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
-# T-010: stage the committed OpenAPI spec into this otherwise web-only build
-# context. `npm run build` -> prebuild -> codegen reads web/openapi.json; the
-# tolerant scripts/copy-spec.mjs sees the canonical ../api source is absent here
-# and uses this staged copy. Without this COPY, codegen ENOENTs in Docker even
-# though it works locally (full repo on disk).
+# T-010: stage the committed OpenAPI spec so codegen (prebuild) finds it in this web-only context.
 COPY api/src/main/resources/openapi/openapi.json ./openapi.json
 RUN npm run build
 
 
-# === STAGE 2: api-build — Maven build the Spring Boot fat jar with AOT ===
-#
-# Rationale: two-step layer-cache pattern. 2a copies ONLY pom.xml and (if
-# present) /api/.mvn and runs `dependency:go-offline` so the Maven local
-# repo is populated as a separate, cacheable layer that ONLY invalidates
-# when pom.xml changes. 2b then copies the frontend bundle and api/src
-# and packages the jar. The spring-boot-maven-plugin process-aot goal is
-# OPT-IN AOT (T-009): the spring-boot-maven-plugin `process-aot` goal is
-# no longer bound to prepare-package by default — it's behind the `aot`
-# Maven profile because springdoc 2.6.0 + Spring Data 4.0.5 cannot
-# co-exist under AOT introspection today (see the rationale block in
-# api/pom.xml). Stage 2 therefore ships a jar WITHOUT AOT bean
-# definitions; stage 3's AppCDS warm-up still works because AppCDS
-# operates on the runtime class graph, not on AOT artifacts. Re-enable
-# by appending `-P aot` to the mvn package command below when springdoc
-# ships Boot-4-compatible bytecode.
-#
-# `api/.mvn*` uses a glob so the COPY succeeds whether or not api/.mvn
-# exists; BuildKit COPY tolerates a zero-match glob as long as at least
-# one source matches (api/pom.xml always does).
-FROM maven:3.9-eclipse-temurin-21 AS api-build
+# === STAGE 2: build — Maven build the Spring Boot fat jar (single /api module) ===
+# Two-step layer cache: copy pom + run dependency:go-offline (cacheable), then copy the
+# frontend bundle + sources and package. AOT is opt-in (the `aot` profile) and intentionally
+# NOT run here (springdoc 2.6 + Spring Data 4 incompatibility) — AppCDS works on the runtime
+# class graph regardless.
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /api
-
-# 2a: warm the Maven cache as a discrete cacheable layer
 COPY api/pom.xml ./pom.xml
 COPY api/.mvn* ./.mvn
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -ntp dependency:go-offline
-
-# 2b: copy frontend bundle into static resources, then sources, then package
 COPY --from=web-build /web/dist ./src/main/resources/static/
 COPY api/src ./src
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -DskipTests package && \
-    cp target/atlas-api-*.jar /tmp/app.jar
+    mvn -B -ntp -DskipTests package \
+ && cp target/atlas-api-*.jar /tmp/app.jar
 
 
-# === STAGE 3: cds — produce the AppCDS shared-class archive (app.jsa) ===
-#
-# Rationale (why AppCDS, not GraalVM native image):
-#   AppCDS (Application Class Data Sharing) writes a pre-parsed, pre-linked
-#   archive of the classes the JVM loads up to a chosen execution point.
-#   On subsequent boots the JVM memory-maps that archive instead of
-#   classloading from scratch — Atlas's target cold-start budget is
-#   /ready ≤ 5s on 1 vCPU / 512 MB, and AppCDS gives us a ~200–400 ms
-#   improvement with zero runtime cost.
-#
-#   GraalVM native image would go further but at the cost of a multi-minute
-#   build, a fragile reflect-config maintenance burden across Spring,
-#   Hibernate, Flyway, and HikariCP, and incompatibilities with bytecode-
-#   manipulating libraries we already depend on. AppCDS keeps the standard
-#   HotSpot runtime — same observability, same flight recorder, same heap
-#   dumps — and pays for itself in MVP.
-#
-# Critical no-DB-boot constraints honored here:
-#   * APP_DATABASE_STARTUP_CHECK_ENABLED=false bypasses
-#     DatabaseStartupValidator (the SmartLifecycle SELECT-1 ping that would
-#     otherwise abort context refresh). This toggle is documented as
-#     image-build-only.
-#   * SPRING_FLYWAY_ENABLED=false stops Flyway from attempting migrations.
-#   * SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT=-1 is a
-#     dual-defense so Hikari does not eagerly try to validate the pool.
-#   * APP_DATABASE_URL / USERNAME / PASSWORD are throwaway placeholders so
-#     DataSourceConfig can construct the HikariDataSource bean lazily
-#     without ever opening a socket.
-#   * -Dspring.context.exit=onRefresh tells Spring to exit the JVM cleanly
-#     once context refresh completes (this is what triggers the JVM to
-#     flush the AppCDS archive).
-#   * JWT_SECRET (T-009) is supplied as a 48-char placeholder so the
-#     security autoconfig + JwtAuthenticationFilter bean wire without
-#     blowing up on a blank-secret edge path. The placeholder length
-#     satisfies Nimbus HS256's ≥256-bit minimum if any future bean
-#     constructs a MACVerifier eagerly. Real deployments override via the
-#     stage-4 runtime env; the placeholder is throwaway.
-#
-# CRITICAL: these are inline RUN env vars, NOT ENV directives. Promoting
-# them to ENV would bake the throwaway placeholder URL/credentials into
-# the runtime image metadata where `docker inspect` could surface them.
-#
-# `timeout 120` is a HARD upper bound on the warm-up: AppCDS warm-up
-# normally completes in ~20–60s. A future regression that exceeds this
-# must be diagnosed (lingering non-daemon thread, blocking I/O during
-# refresh) rather than papered over by raising the timeout.
-#
-# `test -s /build/app.jsa` is a fail-fast guard: if the JVM exits before
-# writing the archive, this fails the build BEFORE stage 4 can copy an
-# empty/missing file and ship a broken image.
-FROM eclipse-temurin:21-jre-noble AS cds
-WORKDIR /build
-COPY --from=api-build /tmp/app.jar /build/app.jar
+# === STAGE 3: layers — explode the executable fat jar into a runnable tree ===
+# This jar has no BOOT-INF/layers.idx (layering not enabled in the build), so `extract --layers`
+# produces an empty loader layer. Instead explode the executable jar directly with the JDK `jar`
+# tool → exploded/{BOOT-INF/lib, BOOT-INF/classes, org/springframework/boot/loader, META-INF}.
+# That is exactly the runnable classpath JarLauncher expects, and stages 5/6 COPY it identically
+# so the AppCDS dump and runtime see a byte-identical classpath.
+FROM eclipse-temurin:21-jdk-jammy AS layers
+WORKDIR /app
+COPY --from=build /tmp/app.jar app.jar
+RUN mkdir -p exploded && cd exploded && jar -xf ../app.jar
+
+
+# === STAGE 4: jlink — minimal custom JRE tailored to the app's modules ===
+# ADD_MODULES is the seed list (jdeps under-reports reflective/ServiceLoader modules — D2);
+# missing modules surface at stage 5 (AppCDS boot) and are added here iteratively.
+# jdk.localedata is REQUIRED by --include-locales=en (the plugin only trims jdk.localedata;
+# without it jlink errors). --strip-native-commands is intentionally NOT used, so jlink emits
+# a correct /opt/jre/bin/java launcher matched to this runtime (no fragile copy-from-JDK).
+FROM eclipse-temurin:21-jdk-jammy AS jlink
+ARG ADD_MODULES
+RUN "$JAVA_HOME/bin/jlink" \
+      --module-path "$JAVA_HOME/jmods" \
+      --add-modules "$ADD_MODULES" \
+      --strip-debug \
+      --no-header-files \
+      --no-man-pages \
+      --compress=zip-6 \
+      --include-locales=en \
+      --output /opt/jre \
+ && /opt/jre/bin/java -Xshare:dump \
+ && /opt/jre/bin/java -version
+# jlink does NOT ship the default static CDS archive; `-Xshare:dump` generates
+# /opt/jre/lib/server/classes.jsa. The stage-5 dynamic dump (-XX:ArchiveClassesAtExit) layers
+# the app classes ON this base, and stage-6 -Xshare:on maps both. Because /opt/jre (incl. this
+# base archive) is COPYed byte-identically into stages 5 and 6, the base stays consistent.
+
+
+# === STAGE 5: appcds — warm the AppCDS archive ON the jlink JRE ===
+# Inline env on RUN — NEVER ENV directives (appcds_boot_safety): build-time placeholders for
+# the no-DB context refresh must not be baked into image metadata. -Dspring.context.exit=onRefresh
+# exits cleanly once refresh completes, flushing the archive. The >10 MiB gate hard-fails the
+# build if the dump was empty/truncated (which would trip -Xshare:on at runtime).
+FROM debian:12-slim AS appcds
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=jlink /opt/jre /opt/jre
+WORKDIR /app
+# Exploded app (BOOT-INF + loader + classes) — identical layout to stage 6 so the AppCDS
+# classpath matches byte-for-byte.
+COPY --from=layers /app/exploded/ ./
 RUN APP_DATABASE_URL=jdbc:postgresql://cds-build-placeholder:5432/atlas \
     APP_DATABASE_USERNAME=cds \
     APP_DATABASE_PASSWORD=cds \
@@ -138,48 +113,36 @@ RUN APP_DATABASE_URL=jdbc:postgresql://cds-build-placeholder:5432/atlas \
     OBJECT_STORAGE_BUCKET=cds-placeholder \
     OBJECT_STORAGE_ACCESS_KEY=cds \
     OBJECT_STORAGE_SECRET_KEY=cds \
-    timeout 120 java \
-      -XX:ArchiveClassesAtExit=/build/app.jsa \
+    timeout 120 /opt/jre/bin/java \
+      -XX:ArchiveClassesAtExit=/app/app.jsa \
       -Dspring.context.exit=onRefresh \
-      -jar /build/app.jar \
- && test -s /build/app.jsa \
- && echo "AppCDS archive written: $(stat -c '%s bytes' /build/app.jsa)"
+      org.springframework.boot.loader.launch.JarLauncher \
+ && test "$(stat -c%s /app/app.jsa)" -gt 10485760 \
+ && echo "AppCDS archive: $(stat -c '%s bytes' /app/app.jsa)"
 
 
-# === STAGE 4: runtime — minimal JRE image that runs the jar with AppCDS ===
-#
-# Rationale:
-#   * eclipse-temurin:21-jre-noble is the JRE-only Temurin 21 image (no
-#     JDK, no Maven) — keeps the image small.
-#   * Non-root user `atlas` (uid 1000): defense-in-depth against container
-#     escape; the runtime needs neither root nor any uid > 0 capability.
-#   * `app.jar` and `app.jsa` are copied in two separate COPY instructions
-#     so the AppCDS archive is its OWN distinct layer in the final image
-#     — visible to `docker history | grep app.jsa` and verifiable in CI.
-#   * ENTRYPOINT flags:
-#       -XX:SharedArchiveFile=/app/app.jsa  activates the AppCDS archive
-#         produced by stage 3 (the ~200-400ms cold-start win).
-#       -XX:+UseG1GC                        predictable low-pause collector
-#         chosen for the target instance size (1 vCPU / 512 MB).
-#   * SPRING_AOT_ENABLED=true is set via ENV (not the ENTRYPOINT) so it is
-#     auditable in `docker inspect` and overridable for diagnostic boots
-#     without rebuilding the image. AOT mode is what consumes the bean
-#     metadata generated by the process-aot goal in stage 2.
-FROM eclipse-temurin:21-jre-noble AS runtime
-# Ubuntu 24.04 (Noble) pre-creates a default `ubuntu` user and group at
-# uid/gid 1000, so a bare `groupadd --gid 1000 atlas` collides. Delete
-# the default user first (idempotent — `|| true` covers future base
-# image variants that drop it) so atlas can take uid/gid 1000. SEC-2
-# and EC-9 assert `id -u` == 1000; do not switch to a different uid.
-RUN userdel --remove ubuntu 2>/dev/null || true \
+# === STAGE 6: runtime — slim base + jlink JRE + exploded app + AppCDS archive ===
+FROM debian:12-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
+ && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1000 atlas \
  && useradd  --system --uid 1000 --gid atlas --home-dir /app --shell /usr/sbin/nologin atlas \
- && mkdir -p /app \
- && chown atlas:atlas /app
+ && mkdir -p /app && chown atlas:atlas /app
+COPY --from=jlink /opt/jre /opt/jre
+ARG ADD_MODULES
+LABEL io.ngss.atlas.jlink-modules="${ADD_MODULES}"
 WORKDIR /app
-COPY --from=api-build --chown=atlas:atlas /tmp/app.jar /app/app.jar
-COPY --from=cds       --chown=atlas:atlas /build/app.jsa /app/app.jsa
+# SAME exploded layout + same jlink JRE as stage 5 → identical classpath for AppCDS mapping.
+COPY --from=layers --chown=atlas:atlas /app/exploded/ ./
+COPY --from=appcds --chown=atlas:atlas /app/app.jsa /app/app.jsa
 USER atlas
+ENV PATH="/opt/jre/bin:$PATH"
 ENV SPRING_AOT_ENABLED=true
+# NO ENV JWT_SECRET / APP_DATABASE_* — all runtime secrets are operator-injected; the
+# container fails fast at startup if JWT_SECRET is absent.
 EXPOSE 8080
-ENTRYPOINT ["java","-XX:SharedArchiveFile=/app/app.jsa","-XX:+UseG1GC","-jar","/app/app.jar"]
+ENTRYPOINT ["/opt/jre/bin/java", \
+  "-XX:SharedArchiveFile=/app/app.jsa", \
+  "-Xshare:on", \
+  "-XX:+UseG1GC", \
+  "org.springframework.boot.loader.launch.JarLauncher"]

@@ -79,6 +79,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Assert no build-time secret ENV directives (T-036 SEC-1)
+        run: |
+          set -euo pipefail
+          # AppCDS placeholders (DB creds, flyway-off, JWT secret) must be inline on RUN, never
+          # ENV directives — else docker inspect surfaces them in the runtime image metadata.
+          if grep -nE '^\s*ENV\s+(APP_DATABASE_|SPRING_FLYWAY_ENABLED|JWT_SECRET)' Dockerfile; then
+            echo "::error::Dockerfile bakes a build-time secret as an ENV directive"
+            exit 1
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -164,6 +174,44 @@ jobs:
             echo "::error::container uid is ${UID_OUT}; expected 1000"
             exit 1
           fi
+
+      - name: Assert AppCDS archive maps under -Xshare:on strict (T-036 QG-5)
+        run: |
+          set -euo pipefail
+          # -Xshare:on (strict) aborts the JVM if the archive can't map; -Xlog:cds proves the
+          # positive mapping deterministically (the normal entrypoint boots silently on success).
+          OUT="$(docker run --rm --entrypoint /opt/jre/bin/java atlas:ci-test \
+            -XX:SharedArchiveFile=/app/app.jsa -Xshare:on -Xlog:cds=info -version 2>&1 || true)"
+          echo "${OUT}"
+          echo "${OUT}" | grep -q 'Opened archive /app/app.jsa' || { echo "::error::app.jsa not opened"; exit 1; }
+          echo "${OUT}" | grep -qiE 'Mapped dynamic region' || { echo "::error::AppCDS dynamic region not mapped"; exit 1; }
+          if echo "${OUT}" | grep -qi 'Unable to use shared archive'; then
+            echo "::error::-Xshare:on could not map the archive"; exit 1
+          fi
+
+      - name: Auth-flow smoke against the slimmed image (T-036 QG-6/QG-7)
+        run: |
+          set -euo pipefail
+          # Run the pre-built jlink image under the dev stack via the CI overlay (no rebuild).
+          cp .env.example .env
+          COMPOSE="docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml"
+          ${COMPOSE} up -d --no-build
+          # Slim runtime has no curl -> poll /ready from the host (not the in-container healthcheck).
+          ok=0
+          for _ in $(seq 1 40); do
+            if curl -sf http://localhost:8080/ready >/dev/null 2>&1; then ok=1; break; fi
+            sleep 3
+          done
+          if [ "${ok}" != "1" ]; then
+            echo "::error::/ready never came up"; ${COMPOSE} logs app || true; exit 1
+          fi
+          curl -sf http://localhost:8080/ready | grep -q '"status":"READY"'
+          curl -sf http://localhost:8080/health | grep -q '"status":"UP"'
+          BASE_URL=http://localhost:8080 sh scripts/auth-smoke.sh
+
+      - name: Tear down compose
+        if: always()
+        run: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.ci.yml down -v || true
 
   e2e-smoke:
     name: Frontend e2e smoke (Playwright vs Vite preview :4173)
