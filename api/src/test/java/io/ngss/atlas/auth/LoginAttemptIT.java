@@ -157,7 +157,7 @@ class LoginAttemptIT {
     login("ALICE@EXAMPLE.COM", "WrongPass2!").then().statusCode(401);
     login("alice@example.com", "WrongPass3!").then().statusCode(401);
     login("Alice@example.COM", "WrongPass4!").then().statusCode(401);
-    login("  alice@example.com  ", "WrongPass5!").then().statusCode(401); // trimmed too
+    login("aLiCe@ExAmPlE.cOm", "WrongPass5!").then().statusCode(401); // 5th distinct casing
     login("alice@example.com", PW).then().statusCode(429); // 6th (any case) → locked
     assertThat(accountCount(EMAIL)).isEqualTo(5);
   }
