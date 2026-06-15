@@ -102,6 +102,16 @@ public class RefreshTokenService {
     repo.markRevokedIfLive(row.getId(), Instant.now(clock));
   }
 
+  /**
+   * Revoke ALL of a user's live refresh tokens ("log out everywhere", T-032). Uses the same
+   * host {@code Instant.now(clock)} as the single-token revoke (a one-shot revoke needs no DB
+   * now()). Idempotent: 0 rows revoked (everything already logged out) is a valid no-op.
+   */
+  @Transactional
+  public void logoutAll(UUID userId) {
+    repo.revokeAllLive(userId, Instant.now(clock));
+  }
+
   static String generateRawRefreshToken() {
     byte[] bytes = new byte[RAW_TOKEN_BYTES];
     SECURE_RANDOM.nextBytes(bytes);

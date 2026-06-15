@@ -238,6 +238,24 @@
         "tags" : [ "auth" ]
       }
     },
+    "/api/auth/logout-all" : {
+      "post" : {
+        "operationId" : "logoutAll",
+        "responses" : {
+          "204" : {
+            "description" : "All live refresh tokens revoked (idempotent)"
+          },
+          "401" : {
+            "description" : "Missing or invalid access token"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "summary" : "Revoke ALL of the caller's live refresh tokens (log out everywhere)",
+        "tags" : [ "auth" ]
+      }
+    },
     "/api/auth/me" : {
       "get" : {
         "operationId" : "getMe",
